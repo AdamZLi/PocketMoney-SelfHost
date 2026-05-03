@@ -42,6 +42,11 @@ const Transactions = () => {
   const [applying, setApplying] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanCategoryId, setScanCategoryId] = useState<string>("uncategorized");
+  const [scanAccountId, setScanAccountId] = useState<string>("all");
+  const [scanFrom, setScanFrom] = useState<string>("");
+  const [scanTo, setScanTo] = useState<string>("");
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
