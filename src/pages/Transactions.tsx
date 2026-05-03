@@ -492,90 +492,255 @@ const Transactions = () => {
             {txns.length} {txns.length === 1 ? "row" : "rows"}
             <span className="mx-2 text-border">·</span>
             {fmtCurrency(total)}
-            {scanProgress && (
+            {scanning && scanProgress && (
               <>
                 <span className="mx-2 text-border">·</span>
                 <span className="text-foreground/70">
-                  Scanning {scanProgress.done}/{scanProgress.total} · {scanProgress.updated} categorized
+                  {scanStage === "applying" ? "Applying" : "Scanning"} {scanProgress.done}/{scanProgress.total}
                 </span>
               </>
             )}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setScanOpen(true)}
-          disabled={scanning}
-          className="h-9 gap-2"
-        >
-          {scanning ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-2">
+          {lastApplied && lastApplied.length > 0 && scanStage !== "summary" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={revertLastScan}
+              disabled={reverting}
+              className="h-9 gap-2 text-muted-foreground"
+            >
+              {reverting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+              Undo last scan
+            </Button>
           )}
-          {scanning ? "Scanning…" : "AI scan & categorize"}
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { resetScanDialog(); setScanOpen(true); }}
+            disabled={scanning}
+            className="h-9 gap-2"
+          >
+            {scanning ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {scanning ? "Scanning…" : "AI scan & categorize"}
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={scanOpen} onOpenChange={(o) => !scanning && setScanOpen(o)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>AI scan & categorize</DialogTitle>
-            <DialogDescription>
-              Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Category</Label>
-              <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="uncategorized">Uncategorized only</SelectItem>
-                  <SelectItem value="all">All transactions</SelectItem>
-                  {(categories as any[]).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Account</Label>
-              <Select value={scanAccountId} onValueChange={setScanAccountId}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All accounts</SelectItem>
-                  {(accounts as any[]).map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}{a.mask ? ` ····${a.mask}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+      <Dialog
+        open={scanOpen}
+        onOpenChange={(o) => {
+          if (scanning) return;
+          setScanOpen(o);
+          if (!o) resetScanDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          {scanStage === "configure" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>AI scan & categorize</DialogTitle>
+                <DialogDescription>
+                  Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest. You'll preview changes before anything is saved.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Category</Label>
+                  <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                      <SelectItem value="all">All transactions</SelectItem>
+                      {(categories as any[]).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Account</Label>
+                  <Select value={scanAccountId} onValueChange={setScanAccountId}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All accounts</SelectItem>
+                      {(accounts as any[]).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setScanOpen(false)}>Cancel</Button>
+                <Button onClick={buildScanPreview} className="gap-2">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Preview changes
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "previewing" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Analyzing transactions…</DialogTitle>
+                <DialogDescription>
+                  Applying rules and asking the AI agent to categorize the remaining merchants.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-6 space-y-3">
+                <Progress
+                  value={scanProgress && scanProgress.total > 0
+                    ? (scanProgress.done / scanProgress.total) * 100
+                    : 5}
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  {scanProgress
+                    ? `${scanProgress.done} / ${scanProgress.total} merchant groups analyzed`
+                    : "Loading transactions…"}
+                </p>
               </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setScanOpen(false)} disabled={scanning}>Cancel</Button>
-            <Button
-              onClick={() => { setScanOpen(false); aiScanCategorize(); }}
-              disabled={scanning}
-              className="gap-2"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Start scan
-            </Button>
-          </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "preview" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Review proposed changes</DialogTitle>
+                <DialogDescription>
+                  {previewItems.length === 0
+                    ? "No category changes are needed."
+                    : `${previewItems.length - excludedFromPreview.size} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. Uncheck any you'd like to skip.`}
+                </DialogDescription>
+              </DialogHeader>
+              {previewItems.length > 0 && (
+                <ScrollArea className="max-h-80 pr-3 border-y">
+                  <div className="divide-y">
+                    {previewItems.map((p) => {
+                      const checked = !excludedFromPreview.has(p.txnId);
+                      const oldName = p.oldCategoryId
+                        ? ((categories as any[]).find((c) => c.id === p.oldCategoryId)?.name ?? "—")
+                        : "Uncategorized";
+                      return (
+                        <label
+                          key={p.txnId}
+                          className="flex items-center gap-3 py-2.5 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              setExcludedFromPreview((prev) => {
+                                const next = new Set(prev);
+                                if (v) next.delete(p.txnId);
+                                else next.add(p.txnId);
+                                return next;
+                              });
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate">{p.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {oldName} → <span className="text-foreground/80">{p.newCategoryName}</span>
+                            </div>
+                          </div>
+                          <Badge variant={p.source === "rule" ? "secondary" : "outline"} className="text-[10px] uppercase tracking-wide">
+                            {p.source}
+                          </Badge>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
+                <Button
+                  onClick={applyScanPreview}
+                  disabled={previewItems.length - excludedFromPreview.size === 0}
+                  className="gap-2"
+                >
+                  Apply {previewItems.length - excludedFromPreview.size} change{previewItems.length - excludedFromPreview.size === 1 ? "" : "s"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "applying" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Applying changes…</DialogTitle>
+                <DialogDescription>Updating your transactions.</DialogDescription>
+              </DialogHeader>
+              <div className="py-6 space-y-3">
+                <Progress
+                  value={scanProgress && scanProgress.total > 0
+                    ? (scanProgress.done / scanProgress.total) * 100
+                    : 5}
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  {scanProgress ? `${scanProgress.done} / ${scanProgress.total} updated` : "Starting…"}
+                </p>
+              </div>
+            </>
+          )}
+
+          {scanStage === "summary" && lastApplied && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-foreground/80" />
+                  Scan complete
+                </DialogTitle>
+                <DialogDescription>
+                  Categorized {lastApplied.length} transaction{lastApplied.length === 1 ? "" : "s"} out of {scanTotalConsidered} considered.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2 grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Applied</div>
+                  <div className="text-xl font-medium">{lastApplied.length}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">By rules</div>
+                  <div className="text-xl font-medium">{lastApplied.filter((p) => p.source === "rule").length}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">By AI</div>
+                  <div className="text-xl font-medium">{lastApplied.filter((p) => p.source === "ai").length}</div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={revertLastScan}
+                  disabled={reverting}
+                  className="gap-2"
+                >
+                  {reverting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                  Revert all
+                </Button>
+                <Button onClick={() => { setScanOpen(false); resetScanDialog(); }}>Done</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
