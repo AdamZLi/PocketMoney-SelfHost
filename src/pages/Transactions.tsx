@@ -358,13 +358,37 @@ const Transactions = () => {
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
       {/* Title */}
-      <div className="mb-10">
-        <h1 className="text-2xl font-medium tracking-tight">Transactions</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {txns.length} {txns.length === 1 ? "row" : "rows"}
-          <span className="mx-2 text-border">·</span>
-          {fmtCurrency(total)}
-        </p>
+      <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Transactions</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {txns.length} {txns.length === 1 ? "row" : "rows"}
+            <span className="mx-2 text-border">·</span>
+            {fmtCurrency(total)}
+            {scanProgress && (
+              <>
+                <span className="mx-2 text-border">·</span>
+                <span className="text-foreground/70">
+                  Scanning {scanProgress.done}/{scanProgress.total} · {scanProgress.updated} categorized
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={aiScanCategorize}
+          disabled={scanning}
+          className="h-9 gap-2"
+        >
+          {scanning ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {scanning ? "Scanning…" : "AI scan & categorize"}
+        </Button>
       </div>
 
       {/* Toolbar */}
