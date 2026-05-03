@@ -62,7 +62,8 @@ const Aliases = () => {
     }
     setPattern(""); setDisplayName(""); setPriority(150); setMatchType("contains");
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
-    toast({ title: "Alias added" });
+    toast({ title: "Alias added — refreshing transactions…" });
+    await applyToExisting(true);
   }
 
   async function updateAlias(id: string, patch: Partial<AliasRow>) {
@@ -72,6 +73,7 @@ const Aliases = () => {
       return;
     }
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
+    await applyToExisting(true);
   }
 
   async function deleteAlias(id: string) {
@@ -81,6 +83,7 @@ const Aliases = () => {
       return;
     }
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
+    await applyToExisting(true);
   }
 
   async function applyToExisting() {
