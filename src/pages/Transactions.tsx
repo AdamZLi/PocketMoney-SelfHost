@@ -225,17 +225,20 @@ const Transactions = () => {
     }
   }
 
-  // AI scan: categorize all uncategorized transactions.
+  // Step 1: build a preview of changes without writing anything to the DB.
   // Rule-based matches always take precedence; the AI agent only sees
   // merchants that no rule could resolve.
-  async function aiScanCategorize() {
+  async function buildScanPreview() {
     if (scanning) return;
     setScanning(true);
-    setScanProgress({ done: 0, total: 0, updated: 0 });
+    setScanStage("previewing");
+    setScanProgress({ done: 0, total: 0 });
+    setPreviewItems([]);
+    setExcludedFromPreview(new Set());
     try {
       let q = supabase
         .from("transactions")
-        .select("id,name")
+        .select("id,name,category_id")
         .eq("excluded", false);
       if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
       else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
@@ -244,9 +247,11 @@ const Transactions = () => {
       if (scanTo) q = q.lte("date", scanTo);
       const { data: pending, error } = await q;
       if (error) throw error;
-      const list = (pending ?? []) as { id: string; name: string }[];
+      const list = (pending ?? []) as { id: string; name: string; category_id: string | null }[];
+      setScanTotalConsidered(list.length);
       if (list.length === 0) {
         toast({ title: "Nothing to scan", description: "No transactions match the selected filters." });
+        setScanStage("configure");
         return;
       }
 
@@ -254,38 +259,34 @@ const Transactions = () => {
         .from("category_rules")
         .select("id,category_id,match_type,pattern,priority");
       const rules: Rule[] = (ruleRows ?? []) as any;
+      const catName = (id: string) =>
+        (categories as any[]).find((c) => c.id === id)?.name ?? "Unknown";
 
-      const ruleAssigned: { id: string; category_id: string }[] = [];
-      const byName = new Map<string, { id: string; name: string }[]>();
+      const items: PreviewItem[] = [];
+      const byName = new Map<string, { id: string; name: string; category_id: string | null }[]>();
+
       for (const t of list) {
         const cat = applyRules(t.name, rules);
         if (cat) {
-          ruleAssigned.push({ id: t.id, category_id: cat });
+          if (cat !== t.category_id) {
+            items.push({
+              txnId: t.id,
+              name: t.name,
+              oldCategoryId: t.category_id,
+              newCategoryId: cat,
+              newCategoryName: catName(cat),
+              source: "rule",
+            });
+          }
         } else {
           const key = t.name.trim().toLowerCase();
           if (!byName.has(key)) byName.set(key, []);
           byName.get(key)!.push(t);
         }
       }
+
       const remaining = [...byName.values()].map((g) => g[0]);
-
-      let updated = 0;
-
-      if (ruleAssigned.length > 0) {
-        const byCat = new Map<string, string[]>();
-        for (const r of ruleAssigned) {
-          if (!byCat.has(r.category_id)) byCat.set(r.category_id, []);
-          byCat.get(r.category_id)!.push(r.id);
-        }
-        for (const [catId, ids] of byCat) {
-          const { error: upErr } = await supabase
-            .from("transactions")
-            .update({ category_id: catId } as any)
-            .in("id", ids);
-          if (!upErr) updated += ids.length;
-        }
-      }
-      setScanProgress({ done: ruleAssigned.length, total: list.length, updated });
+      setScanProgress({ done: 0, total: remaining.length });
 
       const CHUNK = 50;
       for (let i = 0; i < remaining.length; i += CHUNK) {
@@ -315,30 +316,124 @@ const Transactions = () => {
           const repr = chunk.find((m) => m.id === s.id);
           if (!repr) continue;
           const groupKey = repr.name.trim().toLowerCase();
-          const allIds = byName.get(groupKey)?.map((t) => t.id) ?? [repr.id];
-          const { error: upErr } = await supabase
-            .from("transactions")
-            .update({ category_id: s.category_id } as any)
-            .in("id", allIds);
-          if (!upErr) updated += allIds.length;
+          const group = byName.get(groupKey) ?? [repr];
+          for (const t of group) {
+            if (t.category_id === s.category_id) continue;
+            items.push({
+              txnId: t.id,
+              name: t.name,
+              oldCategoryId: t.category_id,
+              newCategoryId: s.category_id,
+              newCategoryName: catName(s.category_id),
+              source: "ai",
+            });
+          }
         }
-        setScanProgress((p) =>
-          p ? { ...p, done: Math.min(p.total, ruleAssigned.length + i + chunk.length), updated } : null,
-        );
+        setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
       }
 
-      toast({
-        title: "AI scan complete",
-        description: `Categorized ${updated} of ${list.length} transactions.`,
-      });
+      setPreviewItems(items);
+      setScanStage("preview");
+    } catch (e: any) {
+      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+      setScanStage("configure");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  // Step 2: apply the previewed changes (minus any user-deselected ones).
+  async function applyScanPreview() {
+    const toApply = previewItems.filter((p) => !excludedFromPreview.has(p.txnId));
+    if (toApply.length === 0) {
+      toast({ title: "Nothing to apply" });
+      return;
+    }
+    setScanStage("applying");
+    setScanning(true);
+    setScanProgress({ done: 0, total: toApply.length });
+    try {
+      const byCat = new Map<string, PreviewItem[]>();
+      for (const p of toApply) {
+        if (!byCat.has(p.newCategoryId)) byCat.set(p.newCategoryId, []);
+        byCat.get(p.newCategoryId)!.push(p);
+      }
+      let done = 0;
+      for (const [catId, group] of byCat) {
+        const ids = group.map((g) => g.txnId);
+        const { error: upErr } = await supabase
+          .from("transactions")
+          .update({ category_id: catId } as any)
+          .in("id", ids);
+        if (upErr) throw upErr;
+        await supabase.from("transaction_edits").insert(
+          group.map((g) => ({
+            transaction_id: g.txnId,
+            field_changed: "category_id",
+            old_value: g.oldCategoryId,
+            new_value: catId,
+          })),
+        );
+        done += ids.length;
+        setScanProgress({ done, total: toApply.length });
+      }
+      setLastApplied(toApply);
+      setScanStage("summary");
       qc.invalidateQueries({ queryKey: ["txns"] });
       qc.invalidateQueries({ queryKey: ["categories", "usage"] });
     } catch (e: any) {
-      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+      toast({ title: "Apply failed", description: e.message ?? String(e), variant: "destructive" });
+      setScanStage("preview");
     } finally {
       setScanning(false);
-      setTimeout(() => setScanProgress(null), 2500);
     }
+  }
+
+  // Revert: restore each previously-changed transaction to its prior category.
+  async function revertLastScan() {
+    if (!lastApplied || lastApplied.length === 0) return;
+    setReverting(true);
+    try {
+      const byOld = new Map<string | null, string[]>();
+      for (const p of lastApplied) {
+        const k = p.oldCategoryId;
+        if (!byOld.has(k)) byOld.set(k, []);
+        byOld.get(k)!.push(p.txnId);
+      }
+      for (const [oldCat, ids] of byOld) {
+        const { error } = await supabase
+          .from("transactions")
+          .update({ category_id: oldCat } as any)
+          .in("id", ids);
+        if (error) throw error;
+        await supabase.from("transaction_edits").insert(
+          lastApplied
+            .filter((p) => p.oldCategoryId === oldCat)
+            .map((p) => ({
+              transaction_id: p.txnId,
+              field_changed: "category_id",
+              old_value: p.newCategoryId,
+              new_value: oldCat,
+            })),
+        );
+      }
+      toast({ title: "Reverted", description: `${lastApplied.length} transaction${lastApplied.length === 1 ? "" : "s"} restored.` });
+      setLastApplied(null);
+      setScanOpen(false);
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["categories", "usage"] });
+    } catch (e: any) {
+      toast({ title: "Revert failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setReverting(false);
+    }
+  }
+
+  function resetScanDialog() {
+    setScanStage("configure");
+    setPreviewItems([]);
+    setExcludedFromPreview(new Set());
+    setScanProgress(null);
   }
 
   function toggleOne(id: string, checked: boolean) {
