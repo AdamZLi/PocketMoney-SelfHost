@@ -68,7 +68,8 @@ const Import = () => {
     setBusy(true);
     try {
       setFilename(file.name);
-      const parsed = await parseFile(file);
+      const merchantAliases = await loadAliases();
+      const parsed = await parseFile(file, merchantAliases);
       const staged: Staged[] = [];
       for (let i = 0; i < parsed.length; i++) {
         const p = parsed[i];
