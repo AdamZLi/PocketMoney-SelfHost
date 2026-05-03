@@ -49,7 +49,7 @@ const Transactions = () => {
   );
 
   async function updateField(id: string, field: string, oldVal: any, newVal: any) {
-    const { error } = await supabase.from("transactions").update({ [field]: newVal }).eq("id", id);
+    const { error } = await supabase.from("transactions").update({ [field]: newVal } as any).eq("id", id);
     if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
     await supabase.from("transaction_edits").insert({
       transaction_id: id, field_changed: field, old_value: oldVal, new_value: newVal,
