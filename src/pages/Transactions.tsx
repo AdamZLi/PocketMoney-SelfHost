@@ -40,10 +40,40 @@ const Transactions = () => {
     queryKey: ["accounts"],
     queryFn: async () => (await supabase.from("accounts").select("id,name,mask").order("name")).data ?? [],
   });
-  const { data: categories = [] } = useQuery({
+  const { data: categoriesRaw = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
   });
+  // Frequency map: how many transactions use each category. Drives the ordering
+  // of the category combobox so the most-used categories surface first.
+  const { data: categoryUsage = {} } = useQuery({
+    queryKey: ["categories", "usage"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("category_id")
+        .not("category_id", "is", null)
+        .limit(10000);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const row of data ?? []) {
+        const id = (row as any).category_id as string | null;
+        if (!id) continue;
+        counts[id] = (counts[id] ?? 0) + 1;
+      }
+      return counts;
+    },
+  });
+  const categories = useMemo(() => {
+    const arr = [...(categoriesRaw as any[])];
+    arr.sort((a, b) => {
+      const ua = (categoryUsage as Record<string, number>)[a.id] ?? 0;
+      const ub = (categoryUsage as Record<string, number>)[b.id] ?? 0;
+      if (ub !== ua) return ub - ua;
+      return a.name.localeCompare(b.name);
+    });
+    return arr;
+  }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
     queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
