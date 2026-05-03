@@ -426,6 +426,26 @@ const Transactions = () => {
           </Button>
         </div>
       )}
+
+      {/* Suggest a categorization rule when a single transaction is recategorized */}
+      <AlertDialog open={!!ruleSuggestion} onOpenChange={(o) => !o && !applying && setRuleSuggestion(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Apply to all "{ruleSuggestion?.merchantName}"?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {matchCount === 0
+                ? `No other transactions match this merchant yet, but a rule will categorize future ones as ${ruleSuggestion?.categoryName}.`
+                : `Set ${matchCount} other transaction${matchCount === 1 ? "" : "s"} from “${ruleSuggestion?.merchantName}” to ${ruleSuggestion?.categoryName} and add a categorization rule so future imports follow the same pattern.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={applying}>Just this one</AlertDialogCancel>
+            <AlertDialogAction onClick={applyRuleToAll} disabled={applying}>
+              {applying ? "Applying…" : "Apply to all & add rule"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
