@@ -62,7 +62,8 @@ const Aliases = () => {
     }
     setPattern(""); setDisplayName(""); setPriority(150); setMatchType("contains");
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
-    toast({ title: "Alias added" });
+    toast({ title: "Alias added — refreshing transactions…" });
+    await applyToExisting(true);
   }
 
   async function updateAlias(id: string, patch: Partial<AliasRow>) {
@@ -72,6 +73,7 @@ const Aliases = () => {
       return;
     }
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
+    await applyToExisting(true);
   }
 
   async function deleteAlias(id: string) {
@@ -81,11 +83,18 @@ const Aliases = () => {
       return;
     }
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
+    await applyToExisting(true);
   }
 
-  async function applyToExisting() {
+  async function applyToExisting(silent = false) {
     setApplyBusy(true);
     try {
+      // Always read the latest aliases (changes from this session may not be in `compiled` yet)
+      const { data: freshAliases } = await supabase
+        .from("merchant_aliases")
+        .select("id,pattern,match_type,display_name,priority,source");
+      const freshCompiled = compileAliases((freshAliases ?? []) as AliasRow[]);
+
       const { data, error } = await supabase
         .from("transactions")
         .select("id,name,raw_row")
@@ -100,13 +109,13 @@ const Aliases = () => {
           ?? (t.raw_row as any)?.Merchant
           ?? (t.raw_row as any)?.merchant
           ?? t.name;
-        const cleaned = cleanMerchant(String(raw ?? t.name), compiled);
+        const cleaned = cleanMerchant(String(raw ?? t.name), freshCompiled);
         if (cleaned && cleaned !== t.name) {
           updates.push({ id: t.id, oldName: t.name, newName: cleaned });
         }
       }
       if (updates.length === 0) {
-        toast({ title: "Nothing to update", description: "All transaction names already match the current rules." });
+        if (!silent) toast({ title: "Nothing to update", description: "All transaction names already match the current rules." });
         return;
       }
       // Apply in batches
@@ -179,7 +188,7 @@ const Aliases = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>All aliases ({aliases.length})</CardTitle>
-          <Button variant="outline" onClick={applyToExisting} disabled={applyBusy}>
+          <Button variant="outline" onClick={() => applyToExisting(false)} disabled={applyBusy}>
             {applyBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
             Apply to existing transactions
           </Button>
