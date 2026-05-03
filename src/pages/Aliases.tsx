@@ -15,6 +15,7 @@ import {
   cleanMerchant,
   genericNormalize,
 } from "@/lib/cleanMerchant";
+import { recleanAllTransactions } from "@/lib/recleanTransactions";
 
 type MatchType = "contains" | "exact" | "regex";
 type Source = "user" | "seed";
@@ -89,54 +90,13 @@ const Aliases = () => {
   async function applyToExisting(silent = false) {
     setApplyBusy(true);
     try {
-      // Always read the latest aliases (changes from this session may not be in `compiled` yet)
-      const { data: freshAliases } = await supabase
-        .from("merchant_aliases")
-        .select("id,pattern,match_type,display_name,priority,source");
-      const freshCompiled = compileAliases((freshAliases ?? []) as AliasRow[]);
-
-      const { data, error } = await supabase
-        .from("transactions")
-        .select("id,name,raw_row")
-        .limit(10000);
-      if (error) throw error;
-      const updates: { id: string; oldName: string; newName: string }[] = [];
-      for (const t of data ?? []) {
-        const raw = (t.raw_row as any)?.Name
-          ?? (t.raw_row as any)?.name
-          ?? (t.raw_row as any)?.Description
-          ?? (t.raw_row as any)?.description
-          ?? (t.raw_row as any)?.Merchant
-          ?? (t.raw_row as any)?.merchant
-          ?? t.name;
-        const cleaned = cleanMerchant(String(raw ?? t.name), freshCompiled);
-        if (cleaned && cleaned !== t.name) {
-          updates.push({ id: t.id, oldName: t.name, newName: cleaned });
-        }
-      }
-      if (updates.length === 0) {
+      const updated = await recleanAllTransactions();
+      if (updated === 0) {
         if (!silent) toast({ title: "Nothing to update", description: "All transaction names already match the current rules." });
-        return;
+      } else {
+        qc.invalidateQueries({ queryKey: ["transactions"] });
+        toast({ title: `Updated ${updated} transaction names` });
       }
-      // Apply in batches
-      for (let i = 0; i < updates.length; i += 200) {
-        const slice = updates.slice(i, i + 200);
-        await Promise.all(
-          slice.map(u =>
-            supabase.from("transactions").update({ name: u.newName }).eq("id", u.id)
-          )
-        );
-        await supabase.from("transaction_edits").insert(
-          slice.map(u => ({
-            transaction_id: u.id,
-            field_changed: "name",
-            old_value: u.oldName as any,
-            new_value: u.newName as any,
-          }))
-        );
-      }
-      qc.invalidateQueries({ queryKey: ["transactions"] });
-      toast({ title: `Updated ${updates.length} transaction names` });
     } catch (e: any) {
       toast({ title: "Apply failed", description: e.message, variant: "destructive" });
     } finally {

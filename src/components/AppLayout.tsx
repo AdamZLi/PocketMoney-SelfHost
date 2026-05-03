@@ -1,6 +1,9 @@
+import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { recleanAllTransactions } from "@/lib/recleanTransactions";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -12,6 +15,19 @@ const nav = [
 ];
 
 export const AppLayout = () => {
+  const qc = useQueryClient();
+  useEffect(() => {
+    // Auto-clean any existing transactions whose name doesn't yet match the current
+    // alias rules. Runs once per session so newly added rules / pre-alias imports
+    // get refreshed without requiring a manual re-import.
+    const KEY = "ledger.lastReclean";
+    const last = Number(sessionStorage.getItem(KEY) || 0);
+    if (Date.now() - last < 5 * 60 * 1000) return; // throttle to 5 min/session
+    sessionStorage.setItem(KEY, String(Date.now()));
+    recleanAllTransactions()
+      .then(n => { if (n > 0) qc.invalidateQueries({ queryKey: ["transactions"] }); })
+      .catch(() => { /* silent */ });
+  }, [qc]);
   return (
     <div className="min-h-screen flex bg-background">
       <aside className="w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
