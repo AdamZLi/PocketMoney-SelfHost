@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
 import { applyRules } from "@/lib/categorize";
+import { loadAliases } from "@/lib/cleanMerchant";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -67,7 +68,8 @@ const Import = () => {
     setBusy(true);
     try {
       setFilename(file.name);
-      const parsed = await parseFile(file);
+      const merchantAliases = await loadAliases();
+      const parsed = await parseFile(file, merchantAliases);
       const staged: Staged[] = [];
       for (let i = 0; i < parsed.length; i++) {
         const p = parsed[i];

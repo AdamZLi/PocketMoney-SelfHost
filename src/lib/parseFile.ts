@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { cleanMerchant } from "./cleanMerchant";
+import { cleanMerchant, CompiledAlias } from "./cleanMerchant";
 
 export type RawRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -76,10 +76,10 @@ function toTags(v: any): string[] {
   return String(v).split(/[,;]/).map(s => s.trim()).filter(Boolean);
 }
 
-export function normalizeRow(row: RawRow): ParsedTxn | null {
+export function normalizeRow(row: RawRow, merchantAliases: CompiledAlias[] = []): ParsedTxn | null {
   const date = toISODate(pick(row, aliases.date));
   const rawName = String(pick(row, aliases.name) ?? "").trim();
-  const name = cleanMerchant(rawName);
+  const name = cleanMerchant(rawName, merchantAliases);
   const amount = toNumber(pick(row, aliases.amount));
   if (!date || !name) return null;
   const statusRaw = String(pick(row, aliases.status) ?? "posted").toLowerCase();
@@ -101,23 +101,23 @@ export function normalizeRow(row: RawRow): ParsedTxn | null {
   };
 }
 
-export async function parseCSV(file: File): Promise<ParsedTxn[]> {
+export async function parseCSV(file: File, merchantAliases: CompiledAlias[] = []): Promise<ParsedTxn[]> {
   const text = await file.text();
   const result = Papa.parse<RawRow>(text, { header: true, skipEmptyLines: true, dynamicTyping: true });
-  return result.data.map(normalizeRow).filter((r): r is ParsedTxn => r !== null);
+  return result.data.map(r => normalizeRow(r, merchantAliases)).filter((r): r is ParsedTxn => r !== null);
 }
 
-export async function parseXLSX(file: File): Promise<ParsedTxn[]> {
+export async function parseXLSX(file: File, merchantAliases: CompiledAlias[] = []): Promise<ParsedTxn[]> {
   const buf = await file.arrayBuffer();
   const wb = XLSX.read(buf, { type: "array", cellDates: true });
   const sheet = wb.Sheets[wb.SheetNames[0]];
   const json = XLSX.utils.sheet_to_json<RawRow>(sheet, { defval: null });
-  return json.map(normalizeRow).filter((r): r is ParsedTxn => r !== null);
+  return json.map(r => normalizeRow(r, merchantAliases)).filter((r): r is ParsedTxn => r !== null);
 }
 
-export async function parseFile(file: File): Promise<ParsedTxn[]> {
+export async function parseFile(file: File, merchantAliases: CompiledAlias[] = []): Promise<ParsedTxn[]> {
   const lower = file.name.toLowerCase();
-  if (lower.endsWith(".csv")) return parseCSV(file);
-  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return parseXLSX(file);
+  if (lower.endsWith(".csv")) return parseCSV(file, merchantAliases);
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return parseXLSX(file, merchantAliases);
   throw new Error("PDF parsing not yet implemented in Phase 1 client. Use CSV or XLSX for now.");
 }

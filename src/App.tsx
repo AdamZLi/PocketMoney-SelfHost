@@ -9,6 +9,7 @@ import Transactions from "./pages/Transactions";
 import Import from "./pages/Import";
 import Accounts from "./pages/Accounts";
 import Categories from "./pages/Categories";
+import Aliases from "./pages/Aliases";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -26,6 +27,7 @@ const App = () => (
             <Route path="/import" element={<Import />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/categories" element={<Categories />} />
+            <Route path="/aliases" element={<Aliases />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
