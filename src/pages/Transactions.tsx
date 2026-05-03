@@ -14,6 +14,13 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 
+type RuleSuggestion = {
+  txnId: string;
+  merchantName: string;
+  categoryId: string;
+  categoryName: string;
+};
+
 const Transactions = () => {
   const qc = useQueryClient();
   const [search, setSearch] = useState("");
@@ -24,6 +31,9 @@ const Transactions = () => {
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [ruleSuggestion, setRuleSuggestion] = useState<RuleSuggestion | null>(null);
+  const [matchCount, setMatchCount] = useState<number>(0);
+  const [applying, setApplying] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
