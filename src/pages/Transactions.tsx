@@ -186,6 +186,12 @@ const Transactions = () => {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
                 <tr>
+                  <th className="px-4 py-3 w-10">
+                    <Checkbox
+                      checked={txns.length > 0 && selected.size === txns.length}
+                      onCheckedChange={(v) => toggleAll(!!v)}
+                    />
+                  </th>
                   <th className="px-4 py-3 w-32">
                     <button
                       type="button"
@@ -205,7 +211,13 @@ const Transactions = () => {
               </thead>
               <tbody className="divide-y">
                 {(txns as any[]).map((t) => (
-                  <tr key={t.id} className="hover:bg-muted/40">
+                  <tr key={t.id} className={`hover:bg-muted/40 ${selected.has(t.id) ? "bg-muted/30" : ""}`}>
+                    <td className="px-4 py-2.5">
+                      <Checkbox
+                        checked={selected.has(t.id)}
+                        onCheckedChange={(v) => toggleOne(t.id, !!v)}
+                      />
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.date)}</td>
                     <td className="px-4 py-2.5 font-medium">{t.name}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">
