@@ -102,6 +102,26 @@ const Transactions = () => {
               Show excluded
             </label>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3 items-center">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">From</label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">To</label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+            <div className="flex gap-2 md:col-span-2 md:justify-end pt-5">
+              {(dateFrom || dateTo) && (
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                >
+                  Clear date range
+                </button>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
