@@ -69,6 +69,33 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] });
   }
 
+  function toggleOne(id: string, checked: boolean) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+  function toggleAll(checked: boolean) {
+    setSelected(checked ? new Set((txns as any[]).map(t => t.id)) : new Set());
+  }
+
+  async function deleteSelected() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    // transaction_tags / transaction_edits cascade via FK ON DELETE CASCADE on transaction_id (edits has no FK; clean it manually)
+    await supabase.from("transaction_edits").delete().in("transaction_id", ids);
+    await supabase.from("transaction_tags").delete().in("transaction_id", ids);
+    const { error } = await supabase.from("transactions").delete().in("id", ids);
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: `Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <header className="flex items-end justify-between">
