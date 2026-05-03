@@ -1,6 +1,6 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
-import { cleanMerchant } from "./cleanMerchant";
+import { cleanMerchant, CompiledAlias } from "./cleanMerchant";
 
 export type RawRow = Record<string, string | number | boolean | null | undefined>;
 
