@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2 } from "lucide-react";
 import { applyRules, type Rule } from "@/lib/categorize";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -18,6 +18,9 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { Badge } from "@/components/ui/badge";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 
 type RuleSuggestion = {
@@ -40,13 +43,28 @@ const Transactions = () => {
   const [ruleSuggestion, setRuleSuggestion] = useState<RuleSuggestion | null>(null);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [applying, setApplying] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanCategoryId, setScanCategoryId] = useState<string>("uncategorized");
   const [scanAccountId, setScanAccountId] = useState<string>("all");
   const [scanFrom, setScanFrom] = useState<string>("");
   const [scanTo, setScanTo] = useState<string>("");
+  type PreviewItem = {
+    txnId: string;
+    name: string;
+    oldCategoryId: string | null;
+    newCategoryId: string;
+    newCategoryName: string;
+    source: "rule" | "ai";
+  };
+  type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
+  const [scanStage, setScanStage] = useState<ScanStage>("configure");
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
+  const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
+  const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
+  const [reverting, setReverting] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -207,17 +225,20 @@ const Transactions = () => {
     }
   }
 
-  // AI scan: categorize all uncategorized transactions.
+  // Step 1: build a preview of changes without writing anything to the DB.
   // Rule-based matches always take precedence; the AI agent only sees
   // merchants that no rule could resolve.
-  async function aiScanCategorize() {
+  async function buildScanPreview() {
     if (scanning) return;
     setScanning(true);
-    setScanProgress({ done: 0, total: 0, updated: 0 });
+    setScanStage("previewing");
+    setScanProgress({ done: 0, total: 0 });
+    setPreviewItems([]);
+    setExcludedFromPreview(new Set());
     try {
       let q = supabase
         .from("transactions")
-        .select("id,name")
+        .select("id,name,category_id")
         .eq("excluded", false);
       if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
       else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
@@ -226,9 +247,11 @@ const Transactions = () => {
       if (scanTo) q = q.lte("date", scanTo);
       const { data: pending, error } = await q;
       if (error) throw error;
-      const list = (pending ?? []) as { id: string; name: string }[];
+      const list = (pending ?? []) as { id: string; name: string; category_id: string | null }[];
+      setScanTotalConsidered(list.length);
       if (list.length === 0) {
         toast({ title: "Nothing to scan", description: "No transactions match the selected filters." });
+        setScanStage("configure");
         return;
       }
 
@@ -236,38 +259,34 @@ const Transactions = () => {
         .from("category_rules")
         .select("id,category_id,match_type,pattern,priority");
       const rules: Rule[] = (ruleRows ?? []) as any;
+      const catName = (id: string) =>
+        (categories as any[]).find((c) => c.id === id)?.name ?? "Unknown";
 
-      const ruleAssigned: { id: string; category_id: string }[] = [];
-      const byName = new Map<string, { id: string; name: string }[]>();
+      const items: PreviewItem[] = [];
+      const byName = new Map<string, { id: string; name: string; category_id: string | null }[]>();
+
       for (const t of list) {
         const cat = applyRules(t.name, rules);
         if (cat) {
-          ruleAssigned.push({ id: t.id, category_id: cat });
+          if (cat !== t.category_id) {
+            items.push({
+              txnId: t.id,
+              name: t.name,
+              oldCategoryId: t.category_id,
+              newCategoryId: cat,
+              newCategoryName: catName(cat),
+              source: "rule",
+            });
+          }
         } else {
           const key = t.name.trim().toLowerCase();
           if (!byName.has(key)) byName.set(key, []);
           byName.get(key)!.push(t);
         }
       }
+
       const remaining = [...byName.values()].map((g) => g[0]);
-
-      let updated = 0;
-
-      if (ruleAssigned.length > 0) {
-        const byCat = new Map<string, string[]>();
-        for (const r of ruleAssigned) {
-          if (!byCat.has(r.category_id)) byCat.set(r.category_id, []);
-          byCat.get(r.category_id)!.push(r.id);
-        }
-        for (const [catId, ids] of byCat) {
-          const { error: upErr } = await supabase
-            .from("transactions")
-            .update({ category_id: catId } as any)
-            .in("id", ids);
-          if (!upErr) updated += ids.length;
-        }
-      }
-      setScanProgress({ done: ruleAssigned.length, total: list.length, updated });
+      setScanProgress({ done: 0, total: remaining.length });
 
       const CHUNK = 50;
       for (let i = 0; i < remaining.length; i += CHUNK) {
@@ -297,30 +316,124 @@ const Transactions = () => {
           const repr = chunk.find((m) => m.id === s.id);
           if (!repr) continue;
           const groupKey = repr.name.trim().toLowerCase();
-          const allIds = byName.get(groupKey)?.map((t) => t.id) ?? [repr.id];
-          const { error: upErr } = await supabase
-            .from("transactions")
-            .update({ category_id: s.category_id } as any)
-            .in("id", allIds);
-          if (!upErr) updated += allIds.length;
+          const group = byName.get(groupKey) ?? [repr];
+          for (const t of group) {
+            if (t.category_id === s.category_id) continue;
+            items.push({
+              txnId: t.id,
+              name: t.name,
+              oldCategoryId: t.category_id,
+              newCategoryId: s.category_id,
+              newCategoryName: catName(s.category_id),
+              source: "ai",
+            });
+          }
         }
-        setScanProgress((p) =>
-          p ? { ...p, done: Math.min(p.total, ruleAssigned.length + i + chunk.length), updated } : null,
-        );
+        setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
       }
 
-      toast({
-        title: "AI scan complete",
-        description: `Categorized ${updated} of ${list.length} transactions.`,
-      });
+      setPreviewItems(items);
+      setScanStage("preview");
+    } catch (e: any) {
+      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+      setScanStage("configure");
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  // Step 2: apply the previewed changes (minus any user-deselected ones).
+  async function applyScanPreview() {
+    const toApply = previewItems.filter((p) => !excludedFromPreview.has(p.txnId));
+    if (toApply.length === 0) {
+      toast({ title: "Nothing to apply" });
+      return;
+    }
+    setScanStage("applying");
+    setScanning(true);
+    setScanProgress({ done: 0, total: toApply.length });
+    try {
+      const byCat = new Map<string, PreviewItem[]>();
+      for (const p of toApply) {
+        if (!byCat.has(p.newCategoryId)) byCat.set(p.newCategoryId, []);
+        byCat.get(p.newCategoryId)!.push(p);
+      }
+      let done = 0;
+      for (const [catId, group] of byCat) {
+        const ids = group.map((g) => g.txnId);
+        const { error: upErr } = await supabase
+          .from("transactions")
+          .update({ category_id: catId } as any)
+          .in("id", ids);
+        if (upErr) throw upErr;
+        await supabase.from("transaction_edits").insert(
+          group.map((g) => ({
+            transaction_id: g.txnId,
+            field_changed: "category_id",
+            old_value: g.oldCategoryId,
+            new_value: catId,
+          })),
+        );
+        done += ids.length;
+        setScanProgress({ done, total: toApply.length });
+      }
+      setLastApplied(toApply);
+      setScanStage("summary");
       qc.invalidateQueries({ queryKey: ["txns"] });
       qc.invalidateQueries({ queryKey: ["categories", "usage"] });
     } catch (e: any) {
-      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+      toast({ title: "Apply failed", description: e.message ?? String(e), variant: "destructive" });
+      setScanStage("preview");
     } finally {
       setScanning(false);
-      setTimeout(() => setScanProgress(null), 2500);
     }
+  }
+
+  // Revert: restore each previously-changed transaction to its prior category.
+  async function revertLastScan() {
+    if (!lastApplied || lastApplied.length === 0) return;
+    setReverting(true);
+    try {
+      const byOld = new Map<string | null, string[]>();
+      for (const p of lastApplied) {
+        const k = p.oldCategoryId;
+        if (!byOld.has(k)) byOld.set(k, []);
+        byOld.get(k)!.push(p.txnId);
+      }
+      for (const [oldCat, ids] of byOld) {
+        const { error } = await supabase
+          .from("transactions")
+          .update({ category_id: oldCat } as any)
+          .in("id", ids);
+        if (error) throw error;
+        await supabase.from("transaction_edits").insert(
+          lastApplied
+            .filter((p) => p.oldCategoryId === oldCat)
+            .map((p) => ({
+              transaction_id: p.txnId,
+              field_changed: "category_id",
+              old_value: p.newCategoryId,
+              new_value: oldCat,
+            })),
+        );
+      }
+      toast({ title: "Reverted", description: `${lastApplied.length} transaction${lastApplied.length === 1 ? "" : "s"} restored.` });
+      setLastApplied(null);
+      setScanOpen(false);
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["categories", "usage"] });
+    } catch (e: any) {
+      toast({ title: "Revert failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setReverting(false);
+    }
+  }
+
+  function resetScanDialog() {
+    setScanStage("configure");
+    setPreviewItems([]);
+    setExcludedFromPreview(new Set());
+    setScanProgress(null);
   }
 
   function toggleOne(id: string, checked: boolean) {
@@ -379,90 +492,255 @@ const Transactions = () => {
             {txns.length} {txns.length === 1 ? "row" : "rows"}
             <span className="mx-2 text-border">·</span>
             {fmtCurrency(total)}
-            {scanProgress && (
+            {scanning && scanProgress && (
               <>
                 <span className="mx-2 text-border">·</span>
                 <span className="text-foreground/70">
-                  Scanning {scanProgress.done}/{scanProgress.total} · {scanProgress.updated} categorized
+                  {scanStage === "applying" ? "Applying" : "Scanning"} {scanProgress.done}/{scanProgress.total}
                 </span>
               </>
             )}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setScanOpen(true)}
-          disabled={scanning}
-          className="h-9 gap-2"
-        >
-          {scanning ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            <Sparkles className="h-3.5 w-3.5" />
+        <div className="flex items-center gap-2">
+          {lastApplied && lastApplied.length > 0 && scanStage !== "summary" && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={revertLastScan}
+              disabled={reverting}
+              className="h-9 gap-2 text-muted-foreground"
+            >
+              {reverting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+              Undo last scan
+            </Button>
           )}
-          {scanning ? "Scanning…" : "AI scan & categorize"}
-        </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => { resetScanDialog(); setScanOpen(true); }}
+            disabled={scanning}
+            className="h-9 gap-2"
+          >
+            {scanning ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" />
+            )}
+            {scanning ? "Scanning…" : "AI scan & categorize"}
+          </Button>
+        </div>
       </div>
 
-      <Dialog open={scanOpen} onOpenChange={(o) => !scanning && setScanOpen(o)}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>AI scan & categorize</DialogTitle>
-            <DialogDescription>
-              Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Category</Label>
-              <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="uncategorized">Uncategorized only</SelectItem>
-                  <SelectItem value="all">All transactions</SelectItem>
-                  {(categories as any[]).map((c) => (
-                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs text-muted-foreground">Account</Label>
-              <Select value={scanAccountId} onValueChange={setScanAccountId}>
-                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All accounts</SelectItem>
-                  {(accounts as any[]).map((a) => (
-                    <SelectItem key={a.id} value={a.id}>
-                      {a.name}{a.mask ? ` ····${a.mask}` : ""}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">From</Label>
-                <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+      <Dialog
+        open={scanOpen}
+        onOpenChange={(o) => {
+          if (scanning) return;
+          setScanOpen(o);
+          if (!o) resetScanDialog();
+        }}
+      >
+        <DialogContent className="sm:max-w-2xl">
+          {scanStage === "configure" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>AI scan & categorize</DialogTitle>
+                <DialogDescription>
+                  Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest. You'll preview changes before anything is saved.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-2">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Category</Label>
+                  <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                      <SelectItem value="all">All transactions</SelectItem>
+                      {(categories as any[]).map((c) => (
+                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Account</Label>
+                  <Select value={scanAccountId} onValueChange={setScanAccountId}>
+                    <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All accounts</SelectItem>
+                      {(accounts as any[]).map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">From</Label>
+                    <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">To</Label>
+                    <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+                  </div>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">To</Label>
-                <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setScanOpen(false)}>Cancel</Button>
+                <Button onClick={buildScanPreview} className="gap-2">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  Preview changes
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "previewing" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Analyzing transactions…</DialogTitle>
+                <DialogDescription>
+                  Applying rules and asking the AI agent to categorize the remaining merchants.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-6 space-y-3">
+                <Progress
+                  value={scanProgress && scanProgress.total > 0
+                    ? (scanProgress.done / scanProgress.total) * 100
+                    : 5}
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  {scanProgress
+                    ? `${scanProgress.done} / ${scanProgress.total} merchant groups analyzed`
+                    : "Loading transactions…"}
+                </p>
               </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setScanOpen(false)} disabled={scanning}>Cancel</Button>
-            <Button
-              onClick={() => { setScanOpen(false); aiScanCategorize(); }}
-              disabled={scanning}
-              className="gap-2"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              Start scan
-            </Button>
-          </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "preview" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Review proposed changes</DialogTitle>
+                <DialogDescription>
+                  {previewItems.length === 0
+                    ? "No category changes are needed."
+                    : `${previewItems.length - excludedFromPreview.size} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. Uncheck any you'd like to skip.`}
+                </DialogDescription>
+              </DialogHeader>
+              {previewItems.length > 0 && (
+                <ScrollArea className="max-h-80 pr-3 border-y">
+                  <div className="divide-y">
+                    {previewItems.map((p) => {
+                      const checked = !excludedFromPreview.has(p.txnId);
+                      const oldName = p.oldCategoryId
+                        ? ((categories as any[]).find((c) => c.id === p.oldCategoryId)?.name ?? "—")
+                        : "Uncategorized";
+                      return (
+                        <label
+                          key={p.txnId}
+                          className="flex items-center gap-3 py-2.5 cursor-pointer"
+                        >
+                          <Checkbox
+                            checked={checked}
+                            onCheckedChange={(v) => {
+                              setExcludedFromPreview((prev) => {
+                                const next = new Set(prev);
+                                if (v) next.delete(p.txnId);
+                                else next.add(p.txnId);
+                                return next;
+                              });
+                            }}
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm truncate">{p.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {oldName} → <span className="text-foreground/80">{p.newCategoryName}</span>
+                            </div>
+                          </div>
+                          <Badge variant={p.source === "rule" ? "secondary" : "outline"} className="text-[10px] uppercase tracking-wide">
+                            {p.source}
+                          </Badge>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </ScrollArea>
+              )}
+              <DialogFooter>
+                <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
+                <Button
+                  onClick={applyScanPreview}
+                  disabled={previewItems.length - excludedFromPreview.size === 0}
+                  className="gap-2"
+                >
+                  Apply {previewItems.length - excludedFromPreview.size} change{previewItems.length - excludedFromPreview.size === 1 ? "" : "s"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+
+          {scanStage === "applying" && (
+            <>
+              <DialogHeader>
+                <DialogTitle>Applying changes…</DialogTitle>
+                <DialogDescription>Updating your transactions.</DialogDescription>
+              </DialogHeader>
+              <div className="py-6 space-y-3">
+                <Progress
+                  value={scanProgress && scanProgress.total > 0
+                    ? (scanProgress.done / scanProgress.total) * 100
+                    : 5}
+                />
+                <p className="text-xs text-muted-foreground text-center">
+                  {scanProgress ? `${scanProgress.done} / ${scanProgress.total} updated` : "Starting…"}
+                </p>
+              </div>
+            </>
+          )}
+
+          {scanStage === "summary" && lastApplied && (
+            <>
+              <DialogHeader>
+                <DialogTitle className="flex items-center gap-2">
+                  <CheckCircle2 className="h-5 w-5 text-foreground/80" />
+                  Scan complete
+                </DialogTitle>
+                <DialogDescription>
+                  Categorized {lastApplied.length} transaction{lastApplied.length === 1 ? "" : "s"} out of {scanTotalConsidered} considered.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="py-2 grid grid-cols-3 gap-3">
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">Applied</div>
+                  <div className="text-xl font-medium">{lastApplied.length}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">By rules</div>
+                  <div className="text-xl font-medium">{lastApplied.filter((p) => p.source === "rule").length}</div>
+                </div>
+                <div className="rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground">By AI</div>
+                  <div className="text-xl font-medium">{lastApplied.filter((p) => p.source === "ai").length}</div>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  variant="outline"
+                  onClick={revertLastScan}
+                  disabled={reverting}
+                  className="gap-2"
+                >
+                  {reverting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Undo2 className="h-3.5 w-3.5" />}
+                  Revert all
+                </Button>
+                <Button onClick={() => { setScanOpen(false); resetScanDialog(); }}>Done</Button>
+              </DialogFooter>
+            </>
+          )}
         </DialogContent>
       </Dialog>
 
