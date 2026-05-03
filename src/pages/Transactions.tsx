@@ -50,6 +50,23 @@ const Transactions = () => {
   const [scanAccountId, setScanAccountId] = useState<string>("all");
   const [scanFrom, setScanFrom] = useState<string>("");
   const [scanTo, setScanTo] = useState<string>("");
+  type PreviewItem = {
+    txnId: string;
+    name: string;
+    oldCategoryId: string | null;
+    newCategoryId: string;
+    newCategoryName: string;
+    source: "rule" | "ai";
+  };
+  type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
+  const [scanStage, setScanStage] = useState<ScanStage>("configure");
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number } | null>(null);
+  const [scanning, setScanning] = useState(false);
+  const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
+  const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
+  const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
+  const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
+  const [reverting, setReverting] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
