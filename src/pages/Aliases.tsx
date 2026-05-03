@@ -109,7 +109,7 @@ const Aliases = () => {
           ?? (t.raw_row as any)?.Merchant
           ?? (t.raw_row as any)?.merchant
           ?? t.name;
-        const cleaned = cleanMerchant(String(raw ?? t.name), compiled);
+        const cleaned = cleanMerchant(String(raw ?? t.name), freshCompiled);
         if (cleaned && cleaned !== t.name) {
           updates.push({ id: t.id, oldName: t.name, newName: cleaned });
         }
