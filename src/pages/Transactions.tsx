@@ -215,15 +215,20 @@ const Transactions = () => {
     setScanning(true);
     setScanProgress({ done: 0, total: 0, updated: 0 });
     try {
-      const { data: pending, error } = await supabase
+      let q = supabase
         .from("transactions")
         .select("id,name")
-        .is("category_id", null)
         .eq("excluded", false);
+      if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
+      else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
+      if (scanAccountId !== "all") q = q.eq("account_id", scanAccountId);
+      if (scanFrom) q = q.gte("date", scanFrom);
+      if (scanTo) q = q.lte("date", scanTo);
+      const { data: pending, error } = await q;
       if (error) throw error;
       const list = (pending ?? []) as { id: string; name: string }[];
       if (list.length === 0) {
-        toast({ title: "Nothing to scan", description: "All transactions are already categorized." });
+        toast({ title: "Nothing to scan", description: "No transactions match the selected filters." });
         return;
       }
 
