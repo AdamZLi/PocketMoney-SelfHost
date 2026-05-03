@@ -421,32 +421,39 @@ const Trends = () => {
                     }
                   />
                   <Tooltip content={renderTooltip} cursor={{ fill: "hsl(var(--muted) / 0.4)" }} />
-                  {categories.map((c, i) => (
-                    <Bar
-                      key={c}
-                      dataKey={c}
-                      stackId="exp"
-                      fill={PALETTE[i % PALETTE.length]}
-                      radius={i === categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                      maxBarSize={56}
-                      cursor="pointer"
-                      onClick={() => handleBarClick(c)}
-                    />
-                  ))}
-                  {categories.map((c, i) => (
-                    <Line
-                      key={`line-${c}`}
-                      type="monotone"
-                      dataKey={`__top__${c}`}
-                      stroke={PALETTE[i % PALETTE.length]}
-                      strokeWidth={1.25}
-                      strokeDasharray="3 3"
-                      dot={false}
-                      activeDot={false}
-                      legendType="none"
-                      isAnimationActive={false}
-                    />
-                  ))}
+                  {categories.map((c, i) => {
+                    const dim = categoryBucket !== "all" && categoryBucket !== c;
+                    return (
+                      <Bar
+                        key={c}
+                        dataKey={c}
+                        stackId="exp"
+                        fill={PALETTE[i % PALETTE.length]}
+                        fillOpacity={dim ? 0.18 : 1}
+                        radius={i === categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={56}
+                        cursor="pointer"
+                        onClick={() => handleBarClick(c)}
+                      />
+                    );
+                  })}
+                  {categoryBucket !== "all" && categories.map((c, i) => {
+                    if (c !== categoryBucket) return null;
+                    return (
+                      <Line
+                        key={`line-${c}`}
+                        type="monotone"
+                        dataKey={c}
+                        stroke={PALETTE[i % PALETTE.length]}
+                        strokeWidth={2}
+                        strokeDasharray="4 4"
+                        dot={{ r: 3, fill: PALETTE[i % PALETTE.length], strokeWidth: 0 }}
+                        activeDot={{ r: 5 }}
+                        legendType="none"
+                        isAnimationActive={false}
+                      />
+                    );
+                  })}
                   <Legend
                     verticalAlign="bottom"
                     iconType="square"
