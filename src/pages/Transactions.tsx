@@ -308,6 +308,8 @@ const Transactions = () => {
       setTimeout(() => setScanProgress(null), 2500);
     }
   }
+
+  function toggleOne(id: string, checked: boolean) {
     setSelected(prev => {
       const next = new Set(prev);
       if (checked) next.add(id); else next.delete(id);
