@@ -354,7 +354,7 @@ const Transactions = () => {
                 </div>
                 <Select
                   value={t.category_id ?? "none"}
-                  onValueChange={(v) => updateField(t.id, "category_id", t.category_id, v === "none" ? null : v)}
+                  onValueChange={(v) => handleCategoryChange(t, v === "none" ? null : v)}
                 >
                   <SelectTrigger className="h-8 border-0 bg-transparent text-sm hover:bg-muted/60 focus:ring-0 px-2 -ml-2">
                     <SelectValue placeholder="Uncategorized" />
