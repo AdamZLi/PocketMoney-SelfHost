@@ -9,6 +9,7 @@ import Transactions from "./pages/Transactions";
 import Import from "./pages/Import";
 import Accounts from "./pages/Accounts";
 import Categories from "./pages/Categories";
+import Aliases from "./pages/Aliases";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
