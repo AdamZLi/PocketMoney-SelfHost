@@ -198,7 +198,116 @@ const Transactions = () => {
     }
   }
 
-  function toggleOne(id: string, checked: boolean) {
+  // AI scan: categorize all uncategorized transactions.
+  // Rule-based matches always take precedence; the AI agent only sees
+  // merchants that no rule could resolve.
+  async function aiScanCategorize() {
+    if (scanning) return;
+    setScanning(true);
+    setScanProgress({ done: 0, total: 0, updated: 0 });
+    try {
+      const { data: pending, error } = await supabase
+        .from("transactions")
+        .select("id,name")
+        .is("category_id", null)
+        .eq("excluded", false);
+      if (error) throw error;
+      const list = (pending ?? []) as { id: string; name: string }[];
+      if (list.length === 0) {
+        toast({ title: "Nothing to scan", description: "All transactions are already categorized." });
+        return;
+      }
+
+      const { data: ruleRows } = await supabase
+        .from("category_rules")
+        .select("id,category_id,match_type,pattern,priority");
+      const rules: Rule[] = (ruleRows ?? []) as any;
+
+      const ruleAssigned: { id: string; category_id: string }[] = [];
+      const byName = new Map<string, { id: string; name: string }[]>();
+      for (const t of list) {
+        const cat = applyRules(t.name, rules);
+        if (cat) {
+          ruleAssigned.push({ id: t.id, category_id: cat });
+        } else {
+          const key = t.name.trim().toLowerCase();
+          if (!byName.has(key)) byName.set(key, []);
+          byName.get(key)!.push(t);
+        }
+      }
+      const remaining = [...byName.values()].map((g) => g[0]);
+
+      let updated = 0;
+
+      if (ruleAssigned.length > 0) {
+        const byCat = new Map<string, string[]>();
+        for (const r of ruleAssigned) {
+          if (!byCat.has(r.category_id)) byCat.set(r.category_id, []);
+          byCat.get(r.category_id)!.push(r.id);
+        }
+        for (const [catId, ids] of byCat) {
+          const { error: upErr } = await supabase
+            .from("transactions")
+            .update({ category_id: catId } as any)
+            .in("id", ids);
+          if (!upErr) updated += ids.length;
+        }
+      }
+      setScanProgress({ done: ruleAssigned.length, total: list.length, updated });
+
+      const CHUNK = 50;
+      for (let i = 0; i < remaining.length; i += CHUNK) {
+        const chunk = remaining.slice(i, i + CHUNK);
+        const { data: aiData, error: aiErr } = await supabase.functions.invoke(
+          "suggest-categories",
+          {
+            body: {
+              merchants: chunk.map((m) => ({ id: m.id, name: m.name })),
+              categories: (categories as any[]).map((c) => ({
+                id: c.id,
+                name: c.name,
+                parent_category: c.parent_category,
+              })),
+            },
+          },
+        );
+        if (aiErr) {
+          toast({ title: "AI scan paused", description: aiErr.message, variant: "destructive" });
+          break;
+        }
+        const suggestions: { id: string; category_id: string | null }[] =
+          aiData?.suggestions ?? [];
+
+        for (const s of suggestions) {
+          if (!s.category_id) continue;
+          const repr = chunk.find((m) => m.id === s.id);
+          if (!repr) continue;
+          const groupKey = repr.name.trim().toLowerCase();
+          const allIds = byName.get(groupKey)?.map((t) => t.id) ?? [repr.id];
+          const { error: upErr } = await supabase
+            .from("transactions")
+            .update({ category_id: s.category_id } as any)
+            .in("id", allIds);
+          if (!upErr) updated += allIds.length;
+        }
+        setScanProgress((p) =>
+          p ? { ...p, done: Math.min(p.total, ruleAssigned.length + i + chunk.length), updated } : null,
+        );
+      }
+
+      toast({
+        title: "AI scan complete",
+        description: `Categorized ${updated} of ${list.length} transactions.`,
+      });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["categories", "usage"] });
+    } catch (e: any) {
+      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setScanning(false);
+      setTimeout(() => setScanProgress(null), 2500);
+    }
+  }
     setSelected(prev => {
       const next = new Set(prev);
       if (checked) next.add(id); else next.delete(id);
