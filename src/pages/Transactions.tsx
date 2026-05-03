@@ -43,8 +43,6 @@ const Transactions = () => {
   const [ruleSuggestion, setRuleSuggestion] = useState<RuleSuggestion | null>(null);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [applying, setApplying] = useState(false);
-  const [scanning, setScanning] = useState(false);
-  const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanCategoryId, setScanCategoryId] = useState<string>("uncategorized");
   const [scanAccountId, setScanAccountId] = useState<string>("all");
