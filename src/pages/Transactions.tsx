@@ -106,7 +106,7 @@ const Transactions = () => {
     await supabase.from("transaction_edits").insert({
       transaction_id: id, field_changed: field, old_value: oldVal, new_value: newVal,
     });
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   // When a single transaction's category changes via the inline dropdown,
@@ -185,7 +185,7 @@ const Transactions = () => {
         title: "Rule applied",
         description: `${categoryName} set on ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`,
       });
-      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
       qc.invalidateQueries({ queryKey: ["rules"] });
     } catch (e: any) {
       toast({ title: "Failed", description: e.message ?? String(e), variant: "destructive" });
@@ -215,7 +215,7 @@ const Transactions = () => {
     if (error) { toast({ title: "Delete failed", description: error.message, variant: "destructive" }); return; }
     toast({ title: `Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   async function bulkUpdate(field: string, value: any, label: string) {
@@ -228,7 +228,7 @@ const Transactions = () => {
     );
     toast({ title: `${label} applied to ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   const dateRangeLabel = dateFrom || dateTo
