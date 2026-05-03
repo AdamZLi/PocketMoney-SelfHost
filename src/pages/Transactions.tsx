@@ -103,6 +103,28 @@ const Transactions = () => {
           <h1 className="text-3xl font-semibold tracking-tight">Transactions</h1>
           <p className="text-sm text-muted-foreground mt-1">{txns.length} rows · {fmtCurrency(total)} total</p>
         </div>
+        {selected.size > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete {selected.size} selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {selected.size} transaction{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently removes the selected rows along with their tags and edit history. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteSelected}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </header>
 
       <Card>
