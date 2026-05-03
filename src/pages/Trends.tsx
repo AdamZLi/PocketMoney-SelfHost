@@ -139,7 +139,6 @@ const Trends = () => {
       const k = monthKey(r.date);
       if (!totals.has(k)) continue;
       const cat = bucketName(r);
-      if (categoryBucket !== "all" && cat !== categoryBucket) continue;
       totals.get(k)!.set(cat, (totals.get(k)!.get(cat) ?? 0) + amt);
       catTotals.set(cat, (catTotals.get(cat) ?? 0) + amt);
     }
