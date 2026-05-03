@@ -376,17 +376,15 @@ const Transactions = () => {
           <span className="text-sm font-medium px-3">{selected.size} selected</span>
           <div className="h-5 w-px bg-border" />
 
-          <Select onValueChange={(v) => bulkUpdate("category_id", v === "none" ? null : v, "Category")}>
-            <SelectTrigger className="h-8 w-40 border-0 bg-transparent text-sm hover:bg-muted/60 focus:ring-0">
-              <SelectValue placeholder="Set category" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">— Clear —</SelectItem>
-              {categories.map((c: any) => (
-                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="w-44">
+            <CategoryCombobox
+              value={null}
+              categories={categories as any}
+              onChange={(v) => bulkUpdate("category_id", v, "Category")}
+              placeholder="Set category"
+              triggerClassName="ml-0"
+            />
+          </div>
 
           <Button size="sm" variant="ghost" className="h-8" onClick={() => bulkUpdate("excluded", true, "Exclude")}>Exclude</Button>
           <Button size="sm" variant="ghost" className="h-8" onClick={() => bulkUpdate("excluded", false, "Include")}>Include</Button>
