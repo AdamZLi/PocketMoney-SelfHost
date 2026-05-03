@@ -78,6 +78,92 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] });
   }
 
+  // When a single transaction's category changes via the inline dropdown,
+  // offer to create a rule that applies the same category to every other
+  // transaction with the same merchant name.
+  async function handleCategoryChange(t: any, newCatId: string | null) {
+    await updateField(t.id, "category_id", t.category_id, newCatId);
+    if (!newCatId) return;
+    const cat = (categories as any[]).find((c) => c.id === newCatId);
+    if (!cat) return;
+    // Count other transactions sharing this merchant name (case-insensitive equals).
+    const { count } = await supabase
+      .from("transactions")
+      .select("id", { count: "exact", head: true })
+      .ilike("name", t.name)
+      .neq("id", t.id);
+    setMatchCount(count ?? 0);
+    setRuleSuggestion({
+      txnId: t.id,
+      merchantName: t.name,
+      categoryId: newCatId,
+      categoryName: cat.name,
+    });
+  }
+
+  async function applyRuleToAll() {
+    if (!ruleSuggestion) return;
+    setApplying(true);
+    try {
+      const { merchantName, categoryId: catId, categoryName } = ruleSuggestion;
+      // 1. Insert (or upsert-equivalent) a categorization rule for this merchant.
+      //    Use equals match on the exact merchant name so we don't over-match.
+      const { data: existing } = await supabase
+        .from("category_rules")
+        .select("id")
+        .eq("pattern", merchantName)
+        .eq("match_type", "equals")
+        .limit(1);
+      if (existing && existing.length > 0) {
+        await supabase
+          .from("category_rules")
+          .update({ category_id: catId, priority: 10, source: "user" })
+          .eq("id", existing[0].id);
+      } else {
+        await supabase.from("category_rules").insert({
+          category_id: catId,
+          pattern: merchantName,
+          match_type: "equals",
+          priority: 10,
+          source: "user",
+        });
+      }
+      // 2. Update every existing matching transaction.
+      const { data: matched } = await supabase
+        .from("transactions")
+        .select("id,category_id")
+        .ilike("name", merchantName);
+      const ids = (matched ?? []).map((m: any) => m.id);
+      if (ids.length > 0) {
+        await supabase
+          .from("transactions")
+          .update({ category_id: catId } as any)
+          .in("id", ids);
+        await supabase.from("transaction_edits").insert(
+          (matched ?? [])
+            .filter((m: any) => m.category_id !== catId)
+            .map((m: any) => ({
+              transaction_id: m.id,
+              field_changed: "category_id",
+              old_value: m.category_id,
+              new_value: catId,
+            }))
+        );
+      }
+      toast({
+        title: "Rule applied",
+        description: `${categoryName} set on ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`,
+      });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["rules"] });
+    } catch (e: any) {
+      toast({ title: "Failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setApplying(false);
+      setRuleSuggestion(null);
+    }
+  }
+
   function toggleOne(id: string, checked: boolean) {
     setSelected(prev => {
       const next = new Set(prev);
