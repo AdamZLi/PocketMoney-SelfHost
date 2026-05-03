@@ -188,7 +188,7 @@ const Aliases = () => {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>All aliases ({aliases.length})</CardTitle>
-          <Button variant="outline" onClick={applyToExisting} disabled={applyBusy}>
+          <Button variant="outline" onClick={() => applyToExisting(false)} disabled={applyBusy}>
             {applyBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
             Apply to existing transactions
           </Button>
