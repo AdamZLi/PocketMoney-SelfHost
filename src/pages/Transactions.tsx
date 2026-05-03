@@ -14,6 +14,10 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
 
 type RuleSuggestion = {
@@ -38,6 +42,11 @@ const Transactions = () => {
   const [applying, setApplying] = useState(false);
   const [scanning, setScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
+  const [scanOpen, setScanOpen] = useState(false);
+  const [scanCategoryId, setScanCategoryId] = useState<string>("uncategorized");
+  const [scanAccountId, setScanAccountId] = useState<string>("all");
+  const [scanFrom, setScanFrom] = useState<string>("");
+  const [scanTo, setScanTo] = useState<string>("");
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -206,15 +215,20 @@ const Transactions = () => {
     setScanning(true);
     setScanProgress({ done: 0, total: 0, updated: 0 });
     try {
-      const { data: pending, error } = await supabase
+      let q = supabase
         .from("transactions")
         .select("id,name")
-        .is("category_id", null)
         .eq("excluded", false);
+      if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
+      else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
+      if (scanAccountId !== "all") q = q.eq("account_id", scanAccountId);
+      if (scanFrom) q = q.gte("date", scanFrom);
+      if (scanTo) q = q.lte("date", scanTo);
+      const { data: pending, error } = await q;
       if (error) throw error;
       const list = (pending ?? []) as { id: string; name: string }[];
       if (list.length === 0) {
-        toast({ title: "Nothing to scan", description: "All transactions are already categorized." });
+        toast({ title: "Nothing to scan", description: "No transactions match the selected filters." });
         return;
       }
 
@@ -378,7 +392,7 @@ const Transactions = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={aiScanCategorize}
+          onClick={() => setScanOpen(true)}
           disabled={scanning}
           className="h-9 gap-2"
         >
@@ -390,6 +404,67 @@ const Transactions = () => {
           {scanning ? "Scanning…" : "AI scan & categorize"}
         </Button>
       </div>
+
+      <Dialog open={scanOpen} onOpenChange={(o) => !scanning && setScanOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>AI scan & categorize</DialogTitle>
+            <DialogDescription>
+              Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Category</Label>
+              <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                  <SelectItem value="all">All transactions</SelectItem>
+                  {(categories as any[]).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Account</Label>
+              <Select value={scanAccountId} onValueChange={setScanAccountId}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All accounts</SelectItem>
+                  {(accounts as any[]).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setScanOpen(false)} disabled={scanning}>Cancel</Button>
+            <Button
+              onClick={() => { setScanOpen(false); aiScanCategorize(); }}
+              disabled={scanning}
+              className="gap-2"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Start scan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
