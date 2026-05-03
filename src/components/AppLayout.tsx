@@ -1,13 +1,14 @@
 import { useEffect } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles } from "lucide-react";
+import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recleanAllTransactions } from "@/lib/recleanTransactions";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
   { to: "/transactions", label: "Transactions", icon: Receipt },
+  { to: "/trends", label: "Trends", icon: BarChart3 },
   { to: "/import", label: "Import", icon: Upload },
   { to: "/accounts", label: "Accounts", icon: Wallet },
   { to: "/categories", label: "Categories", icon: Tags },
