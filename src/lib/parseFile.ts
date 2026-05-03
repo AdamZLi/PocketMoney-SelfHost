@@ -1,5 +1,6 @@
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { cleanMerchant } from "./cleanMerchant";
 
 export type RawRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -77,7 +78,8 @@ function toTags(v: any): string[] {
 
 export function normalizeRow(row: RawRow): ParsedTxn | null {
   const date = toISODate(pick(row, aliases.date));
-  const name = String(pick(row, aliases.name) ?? "").trim();
+  const rawName = String(pick(row, aliases.name) ?? "").trim();
+  const name = cleanMerchant(rawName);
   const amount = toNumber(pick(row, aliases.amount));
   if (!date || !name) return null;
   const statusRaw = String(pick(row, aliases.status) ?? "posted").toLowerCase();
