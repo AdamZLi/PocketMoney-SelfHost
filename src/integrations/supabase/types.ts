@@ -148,6 +148,39 @@ export type Database = {
         }
         Relationships: []
       }
+      merchant_aliases: {
+        Row: {
+          created_at: string
+          display_name: string
+          id: string
+          match_type: Database["public"]["Enums"]["alias_match_type"]
+          pattern: string
+          priority: number
+          source: Database["public"]["Enums"]["alias_source"]
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name: string
+          id?: string
+          match_type?: Database["public"]["Enums"]["alias_match_type"]
+          pattern: string
+          priority?: number
+          source?: Database["public"]["Enums"]["alias_source"]
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string
+          id?: string
+          match_type?: Database["public"]["Enums"]["alias_match_type"]
+          pattern?: string
+          priority?: number
+          source?: Database["public"]["Enums"]["alias_source"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
       plaid_items: {
         Row: {
           access_token: string | null
@@ -358,6 +391,8 @@ export type Database = {
         | "savings"
         | "cash"
         | "other"
+      alias_match_type: "contains" | "exact" | "regex"
+      alias_source: "user" | "seed"
       rule_match_type: "contains" | "equals" | "regex"
       rule_source: "seed" | "user" | "learned"
       txn_source: "manual" | "import" | "plaid"
@@ -497,6 +532,8 @@ export const Constants = {
         "cash",
         "other",
       ],
+      alias_match_type: ["contains", "exact", "regex"],
+      alias_source: ["user", "seed"],
       rule_match_type: ["contains", "equals", "regex"],
       rule_source: ["seed", "user", "learned"],
       txn_source: ["manual", "import", "plaid"],
