@@ -86,9 +86,15 @@ const Aliases = () => {
     await applyToExisting(true);
   }
 
-  async function applyToExisting() {
+  async function applyToExisting(silent = false) {
     setApplyBusy(true);
     try {
+      // Always read the latest aliases (changes from this session may not be in `compiled` yet)
+      const { data: freshAliases } = await supabase
+        .from("merchant_aliases")
+        .select("id,pattern,match_type,display_name,priority,source");
+      const freshCompiled = compileAliases((freshAliases ?? []) as AliasRow[]);
+
       const { data, error } = await supabase
         .from("transactions")
         .select("id,name,raw_row")
