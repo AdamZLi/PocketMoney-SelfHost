@@ -352,20 +352,11 @@ const Transactions = () => {
                     </div>
                   )}
                 </div>
-                <Select
-                  value={t.category_id ?? "none"}
-                  onValueChange={(v) => handleCategoryChange(t, v === "none" ? null : v)}
-                >
-                  <SelectTrigger className="h-8 border-0 bg-transparent text-sm hover:bg-muted/60 focus:ring-0 px-2 -ml-2">
-                    <SelectValue placeholder="Uncategorized" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">— None —</SelectItem>
-                    {categories.map((c: any) => (
-                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <CategoryCombobox
+                  value={t.category_id}
+                  categories={categories as any}
+                  onChange={(v) => handleCategoryChange(t, v)}
+                />
                 <span className="text-sm text-right tabular-nums font-medium">
                   {fmtCurrency(Number(t.amount))}
                 </span>
