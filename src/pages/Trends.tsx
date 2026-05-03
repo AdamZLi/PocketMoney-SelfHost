@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate } from "@/lib/format";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Calendar, X } from "lucide-react";
+import { Calendar, X, ArrowUpRight, ArrowDownRight } from "lucide-react";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -19,23 +18,24 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
 } from "recharts";
 
+// Refined, restrained palette — soft jewel tones rather than saturated primaries.
 const PALETTE = [
-  "hsl(217 91% 60%)",
-  "hsl(142 71% 45%)",
-  "hsl(38 92% 50%)",
-  "hsl(346 87% 60%)",
-  "hsl(262 83% 65%)",
-  "hsl(173 80% 40%)",
-  "hsl(24 95% 58%)",
-  "hsl(199 89% 55%)",
-  "hsl(291 64% 58%)",
-  "hsl(84 65% 50%)",
-  "hsl(0 72% 60%)",
-  "hsl(45 93% 47%)",
+  "hsl(221 70% 56%)",
+  "hsl(160 55% 45%)",
+  "hsl(35 85% 58%)",
+  "hsl(345 75% 60%)",
+  "hsl(265 60% 62%)",
+  "hsl(190 65% 48%)",
+  "hsl(20 80% 60%)",
+  "hsl(140 40% 50%)",
+  "hsl(290 50% 60%)",
+  "hsl(45 80% 55%)",
+  "hsl(210 50% 55%)",
+  "hsl(0 65% 62%)",
 ];
+const NEUTRAL = "hsl(var(--muted-foreground) / 0.25)";
 
 type Row = {
   date: string;
@@ -47,11 +47,17 @@ type Row = {
 };
 
 const monthKey = (d: string) => d.slice(0, 7);
-const monthLabel = (k: string) => {
+const monthShort = (k: string) => {
   const [y, m] = k.split("-");
   return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, {
     month: "short",
-    year: "2-digit",
+  });
+};
+const monthFull = (k: string) => {
+  const [y, m] = k.split("-");
+  return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, {
+    month: "long",
+    year: "numeric",
   });
 };
 const bucketName = (r: Row) =>
@@ -60,7 +66,7 @@ const bucketName = (r: Row) =>
 const Trends = () => {
   const [months, setMonths] = useState(12);
   const [accountId, setAccountId] = useState<string>("all");
-  const [categoryBucket, setCategoryBucket] = useState<string>("all"); // by display bucket name
+  const [categoryBucket, setCategoryBucket] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
 
@@ -70,7 +76,6 @@ const Trends = () => {
       (await supabase.from("accounts").select("id,name,mask").order("name")).data ?? [],
   });
 
-  // Effective range
   const range = useMemo(() => {
     if (dateFrom || dateTo) {
       const from =
@@ -102,7 +107,6 @@ const Trends = () => {
     },
   });
 
-  // Build month buckets for the effective range.
   const buckets = useMemo(() => {
     const out: string[] = [];
     const f = new Date(range.from);
@@ -116,7 +120,6 @@ const Trends = () => {
     return out;
   }, [range.from, range.to]);
 
-  // All available bucket names (independent of categoryBucket filter, so the dropdown is stable).
   const allBuckets = useMemo(() => {
     const totals = new Map<string, number>();
     for (const r of rows) {
@@ -149,15 +152,12 @@ const Trends = () => {
 
     const totalsByMonth = new Map<string, number>();
     const data = buckets.map((mk) => {
-      const row: Record<string, any> = { month: mk, label: monthLabel(mk) };
+      const row: Record<string, any> = { month: mk, label: monthShort(mk), full: monthFull(mk) };
       let sum = 0;
-      let cum = 0;
       for (const c of cats) {
         const v = totals.get(mk)!.get(c) ?? 0;
         row[c] = v;
         sum += v;
-        cum += v;
-        row[`__top__${c}`] = cum;
       }
       row.__total = sum;
       totalsByMonth.set(mk, sum);
@@ -176,38 +176,49 @@ const Trends = () => {
       ? ((lastTwo[1] - lastTwo[0]) / lastTwo[0]) * 100
       : null;
 
+  // Per-category total honoring filter (for single-category view)
+  const focusedTotal = useMemo(() => {
+    if (categoryBucket === "all") return grandTotal;
+    return chartData.reduce((s, r: any) => s + (Number(r[categoryBucket]) || 0), 0);
+  }, [categoryBucket, chartData, grandTotal]);
+
   const dateRangeLabel =
     dateFrom || dateTo
       ? `${dateFrom ? fmtDate(dateFrom) : "…"} → ${dateTo ? fmtDate(dateTo) : "…"}`
-      : `Last ${months}m`;
+      : `Last ${months} months`;
 
   const activeFilters =
     (accountId !== "all" ? 1 : 0) +
     (categoryBucket !== "all" ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0);
 
+  const handleBarClick = (cat: string) => {
+    setCategoryBucket((cur) => (cur === cat ? "all" : cat));
+  };
+
   const renderTooltip = ({ active, payload, label }: any) => {
     if (!active || !payload?.length) return null;
     const segs = payload
-      .filter((p: any) => !p.dataKey?.startsWith?.("__"))
+      .filter((p: any) => !String(p.dataKey ?? "").startsWith("__"))
       .filter((p: any) => Number(p.value) > 0)
       .sort((a: any, b: any) => b.value - a.value);
     const total = segs.reduce((s: number, p: any) => s + Number(p.value), 0);
+    const full = chartData.find((r: any) => r.label === label)?.full ?? label;
     return (
-      <div className="rounded-md border bg-popover text-popover-foreground shadow-md p-3 min-w-[220px]">
-        <div className="flex items-baseline justify-between mb-2">
-          <span className="text-sm font-semibold">{label}</span>
-          <span className="text-sm tabular-nums font-medium">{fmtCurrency(total)}</span>
+      <div className="rounded-xl border border-border/60 bg-background/95 backdrop-blur shadow-xl p-4 min-w-[240px]">
+        <div className="flex items-baseline justify-between mb-3 gap-4">
+          <span className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{full}</span>
+          <span className="text-base tabular-nums font-semibold">{fmtCurrency(total)}</span>
         </div>
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {segs.map((p: any) => (
             <div key={p.dataKey} className="flex items-center justify-between text-xs">
-              <span className="flex items-center gap-2 truncate">
+              <span className="flex items-center gap-2.5 truncate">
                 <span
-                  className="inline-block h-2 w-2 rounded-sm shrink-0"
+                  className="inline-block h-1.5 w-1.5 rounded-full shrink-0"
                   style={{ background: p.color }}
                 />
-                <span className="truncate">{p.dataKey}</span>
+                <span className="truncate text-foreground/80">{p.dataKey}</span>
               </span>
               <span className="tabular-nums text-muted-foreground ml-3">
                 {fmtCurrency(Number(p.value))}
@@ -218,49 +229,57 @@ const Trends = () => {
             <div className="text-xs text-muted-foreground">No spend</div>
           )}
         </div>
-        <div className="mt-2 pt-2 border-t text-[10px] uppercase tracking-wider text-muted-foreground">
-          Click a segment to filter
-        </div>
       </div>
     );
   };
 
-  const handleBarClick = (cat: string) => {
-    setCategoryBucket((cur) => (cur === cat ? "all" : cat));
-  };
+  // Stat block — borderless, type-led
+  const Stat = ({
+    label, value, sub, accent,
+  }: { label: string; value: React.ReactNode; sub?: React.ReactNode; accent?: "up" | "down" }) => (
+    <div>
+      <div className="text-[11px] uppercase tracking-[0.12em] text-muted-foreground">{label}</div>
+      <div className="mt-2 flex items-baseline gap-2">
+        <div className="text-3xl font-medium tracking-tight tabular-nums">{value}</div>
+        {accent === "up" && <ArrowUpRight className="h-4 w-4 text-destructive" />}
+        {accent === "down" && <ArrowDownRight className="h-4 w-4 text-emerald-500" />}
+      </div>
+      {sub && <div className="text-xs text-muted-foreground mt-1">{sub}</div>}
+    </div>
+  );
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-12 space-y-6">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
+    <div className="max-w-6xl mx-auto px-8 py-12">
+      {/* Title + range pills */}
+      <header className="flex items-end justify-between gap-6 flex-wrap mb-10">
         <div>
-          <p className="text-sm text-muted-foreground">Visualizations</p>
-          <h1 className="text-2xl font-medium tracking-tight">Spending trends</h1>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Trends</p>
+          <h1 className="text-3xl font-medium tracking-tight mt-2">Spending over time</h1>
         </div>
-        {dateFrom || dateTo ? null : (
-          <div className="flex items-center gap-1 text-sm">
-            <span className="text-muted-foreground mr-1">Range</span>
+        {!(dateFrom || dateTo) && (
+          <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
             {[3, 6, 12, 24].map((n) => (
               <button
                 key={n}
                 onClick={() => setMonths(n)}
-                className={`h-8 px-3 rounded-md text-sm transition-colors ${
+                className={`h-7 px-3 rounded-full text-xs font-medium tabular-nums transition-colors ${
                   months === n
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted/60"
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {n}m
+                {n}M
               </button>
             ))}
           </div>
         )}
       </header>
 
-      {/* Filter toolbar — mirrors Transactions */}
-      <div className="flex items-center gap-2 flex-wrap">
+      {/* Filters — quiet ghost row */}
+      <div className="flex items-center gap-1 flex-wrap mb-12 -ml-2 text-sm">
         <Popover>
           <PopoverTrigger asChild>
-            <Button variant="ghost" size="sm" className="h-9 text-muted-foreground font-normal">
+            <Button variant="ghost" size="sm" className="h-8 text-muted-foreground hover:text-foreground font-normal">
               <Calendar className="h-3.5 w-3.5 mr-2" />
               {dateRangeLabel}
             </Button>
@@ -287,8 +306,10 @@ const Trends = () => {
           </PopoverContent>
         </Popover>
 
+        <span className="text-border">·</span>
+
         <Select value={accountId} onValueChange={setAccountId}>
-          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+          <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent text-muted-foreground hover:text-foreground font-normal focus:ring-0 px-2">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -301,8 +322,10 @@ const Trends = () => {
           </SelectContent>
         </Select>
 
+        <span className="text-border">·</span>
+
         <Select value={categoryBucket} onValueChange={setCategoryBucket}>
-          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+          <SelectTrigger className="h-8 w-auto gap-2 border-0 bg-transparent text-muted-foreground hover:text-foreground font-normal focus:ring-0 px-2">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -314,126 +337,121 @@ const Trends = () => {
         </Select>
 
         {activeFilters > 0 && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-9 text-muted-foreground"
-            onClick={() => {
-              setAccountId("all");
-              setCategoryBucket("all");
-              setDateFrom("");
-              setDateTo("");
-            }}
-          >
-            <X className="h-3.5 w-3.5 mr-1" />
-            Reset
-          </Button>
+          <>
+            <span className="text-border">·</span>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-muted-foreground hover:text-foreground font-normal"
+              onClick={() => {
+                setAccountId("all");
+                setCategoryBucket("all");
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              <X className="h-3.5 w-3.5 mr-1" />
+              Reset
+            </Button>
+          </>
         )}
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Total ({buckets.length}m)
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">{fmtCurrency(grandTotal)}</div>
-            {categoryBucket !== "all" && (
-              <p className="text-xs text-muted-foreground mt-1 truncate">in {categoryBucket}</p>
-            )}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Monthly average
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold tabular-nums">{fmtCurrency(avg)}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-xs font-medium text-muted-foreground">
-              Month-over-month
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div
-              className={`text-2xl font-semibold tabular-nums ${
-                mom == null ? "" : mom > 0 ? "text-destructive" : "text-primary"
-              }`}
-            >
-              {mom == null ? "—" : `${mom > 0 ? "+" : ""}${mom.toFixed(1)}%`}
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">vs previous month</p>
-          </CardContent>
-        </Card>
+      {/* Stats — borderless, type-led, clean spacing */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-12 mb-14 pb-12 border-b border-border/60">
+        <Stat
+          label={categoryBucket === "all" ? "Total spend" : categoryBucket}
+          value={fmtCurrency(focusedTotal)}
+          sub={`${buckets.length} ${buckets.length === 1 ? "month" : "months"}`}
+        />
+        <Stat
+          label="Monthly average"
+          value={fmtCurrency(avg)}
+          sub={nonZero.length ? `across ${nonZero.length} active months` : "no activity"}
+        />
+        <Stat
+          label="Month over month"
+          value={mom == null ? "—" : `${mom > 0 ? "+" : ""}${mom.toFixed(1)}%`}
+          accent={mom == null ? undefined : mom > 0 ? "up" : "down"}
+          sub="vs previous month"
+        />
       </div>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>
-            {categoryBucket === "all"
-              ? "Monthly expenditure by category"
-              : `Monthly expenditure · ${categoryBucket}`}
-          </CardTitle>
-          {categoryBucket !== "all" && (
-            <Button variant="ghost" size="sm" className="h-8" onClick={() => setCategoryBucket("all")}>
-              <X className="h-3.5 w-3.5 mr-1" /> Show all categories
-            </Button>
-          )}
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="h-[460px] flex items-center justify-center text-sm text-muted-foreground">
-              Loading…
-            </div>
-          ) : categories.length === 0 ? (
-            <div className="h-[460px] flex items-center justify-center text-sm text-muted-foreground">
-              No transactions in this range.
-            </div>
-          ) : (
-            <div className="h-[480px] w-full">
+      {/* Chart — no card chrome */}
+      <section>
+        <div className="flex items-end justify-between mb-6">
+          <div>
+            <h2 className="text-base font-medium">
+              {categoryBucket === "all" ? "By category" : categoryBucket}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-1">
+              {categoryBucket === "all"
+                ? "Click a segment to focus a category"
+                : "Showing one category — others dimmed"}
+            </p>
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="h-[420px] flex items-center justify-center text-sm text-muted-foreground">
+            Loading…
+          </div>
+        ) : categories.length === 0 ? (
+          <div className="h-[420px] flex items-center justify-center text-sm text-muted-foreground">
+            No transactions in this range.
+          </div>
+        ) : (
+          <>
+            <div className="h-[420px] w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <ComposedChart
                   data={chartData}
-                  margin={{ top: 16, right: 24, bottom: 8, left: 8 }}
+                  margin={{ top: 24, right: 8, bottom: 8, left: 0 }}
+                  barCategoryGap="28%"
                 >
-                  <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                  <CartesianGrid
+                    strokeDasharray="2 4"
+                    stroke="hsl(var(--border))"
+                    vertical={false}
+                    strokeOpacity={0.6}
+                  />
                   <XAxis
                     dataKey="label"
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    dy={8}
                   />
                   <YAxis
                     stroke="hsl(var(--muted-foreground))"
-                    fontSize={12}
+                    fontSize={11}
                     tickLine={false}
                     axisLine={false}
+                    width={48}
+                    tickCount={5}
                     tickFormatter={(v) =>
-                      v >= 1000 ? `${(v / 1000).toFixed(0)}k` : String(v)
+                      v >= 1000 ? `${(v / 1000).toFixed(v >= 10000 ? 0 : 1)}k` : String(v)
                     }
                   />
-                  <Tooltip content={renderTooltip} cursor={{ fill: "hsl(var(--muted) / 0.4)" }} />
+                  <Tooltip
+                    content={renderTooltip}
+                    cursor={{ fill: "hsl(var(--muted) / 0.35)", radius: 6 }}
+                  />
                   {categories.map((c, i) => {
                     const dim = categoryBucket !== "all" && categoryBucket !== c;
+                    const color = dim ? NEUTRAL : PALETTE[i % PALETTE.length];
                     return (
                       <Bar
                         key={c}
                         dataKey={c}
                         stackId="exp"
-                        fill={PALETTE[i % PALETTE.length]}
-                        fillOpacity={dim ? 0.18 : 1}
-                        radius={i === categories.length - 1 ? [4, 4, 0, 0] : [0, 0, 0, 0]}
-                        maxBarSize={56}
+                        fill={color}
+                        radius={i === categories.length - 1 ? [6, 6, 0, 0] : [0, 0, 0, 0]}
+                        maxBarSize={44}
                         cursor="pointer"
                         onClick={() => handleBarClick(c)}
+                        isAnimationActive={false}
                       />
                     );
                   })}
@@ -445,34 +463,42 @@ const Trends = () => {
                         type="monotone"
                         dataKey={c}
                         stroke={PALETTE[i % PALETTE.length]}
-                        strokeWidth={2}
-                        strokeDasharray="4 4"
-                        dot={{ r: 3, fill: PALETTE[i % PALETTE.length], strokeWidth: 0 }}
-                        activeDot={{ r: 5 }}
-                        legendType="none"
+                        strokeWidth={1.5}
+                        strokeDasharray="3 4"
+                        dot={{ r: 2.5, fill: PALETTE[i % PALETTE.length], strokeWidth: 0 }}
+                        activeDot={{ r: 4 }}
                         isAnimationActive={false}
                       />
                     );
                   })}
-                  <Legend
-                    verticalAlign="bottom"
-                    iconType="square"
-                    wrapperStyle={{ fontSize: 12, paddingTop: 12, cursor: "pointer" }}
-                    payload={categories.map((c, i) => ({
-                      value: c,
-                      type: "square",
-                      id: c,
-                      color: PALETTE[i % PALETTE.length],
-                      dataKey: c,
-                    }))}
-                    onClick={(e: any) => e?.dataKey && handleBarClick(String(e.dataKey))}
-                  />
                 </ComposedChart>
               </ResponsiveContainer>
             </div>
-          )}
-        </CardContent>
-      </Card>
+
+            {/* Custom legend — clickable chips, ordered by total */}
+            <div className="mt-6 flex flex-wrap gap-x-5 gap-y-2">
+              {categories.map((c, i) => {
+                const active = categoryBucket === "all" || categoryBucket === c;
+                return (
+                  <button
+                    key={c}
+                    onClick={() => handleBarClick(c)}
+                    className={`group inline-flex items-center gap-2 text-xs transition-opacity ${
+                      active ? "opacity-100" : "opacity-40 hover:opacity-70"
+                    }`}
+                  >
+                    <span
+                      className="inline-block h-2 w-2 rounded-full"
+                      style={{ background: PALETTE[i % PALETTE.length] }}
+                    />
+                    <span className="text-foreground/80 group-hover:text-foreground">{c}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </>
+        )}
+      </section>
     </div>
   );
 };
