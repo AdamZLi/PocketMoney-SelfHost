@@ -2,14 +2,13 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate } from "@/lib/format";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Badge } from "@/components/ui/badge";
-import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { toast } from "@/hooks/use-toast";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X } from "lucide-react";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -83,14 +82,10 @@ const Transactions = () => {
   async function deleteSelected() {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
-    // transaction_tags / transaction_edits cascade via FK ON DELETE CASCADE on transaction_id (edits has no FK; clean it manually)
     await supabase.from("transaction_edits").delete().in("transaction_id", ids);
     await supabase.from("transaction_tags").delete().in("transaction_id", ids);
     const { error } = await supabase.from("transactions").delete().in("id", ids);
-    if (error) {
-      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
-      return;
-    }
+    if (error) { toast({ title: "Delete failed", description: error.message, variant: "destructive" }); return; }
     toast({ title: `Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["txns"] });
@@ -100,212 +95,241 @@ const Transactions = () => {
     const ids = Array.from(selected);
     if (ids.length === 0) return;
     const { error } = await supabase.from("transactions").update({ [field]: value } as any).in("id", ids);
-    if (error) {
-      toast({ title: "Update failed", description: error.message, variant: "destructive" });
-      return;
-    }
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
     await supabase.from("transaction_edits").insert(
-      ids.map(id => ({
-        transaction_id: id, field_changed: field,
-        old_value: null as any, new_value: value as any,
-      }))
+      ids.map(id => ({ transaction_id: id, field_changed: field, old_value: null as any, new_value: value as any }))
     );
     toast({ title: `${label} applied to ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
     qc.invalidateQueries({ queryKey: ["txns"] });
   }
 
+  const dateRangeLabel = dateFrom || dateTo
+    ? `${dateFrom ? fmtDate(dateFrom) : "…"} → ${dateTo ? fmtDate(dateTo) : "…"}`
+    : "Any date";
+
+  const activeFilterCount =
+    (accountId !== "all" ? 1 : 0) +
+    (categoryId !== "all" ? 1 : 0) +
+    (dateFrom || dateTo ? 1 : 0) +
+    (showExcluded ? 1 : 0);
+
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
-      <header className="flex items-end justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-3xl font-semibold tracking-tight">Transactions</h1>
-          <p className="text-sm text-muted-foreground mt-1">{txns.length} rows · {fmtCurrency(total)} total</p>
+    <div className="max-w-6xl mx-auto px-8 py-12">
+      {/* Title */}
+      <div className="mb-10">
+        <h1 className="text-2xl font-medium tracking-tight">Transactions</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          {txns.length} {txns.length === 1 ? "row" : "rows"}
+          <span className="mx-2 text-border">·</span>
+          {fmtCurrency(total)}
+        </p>
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            placeholder="Search"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="pl-9 h-9 border-0 bg-muted/50 focus-visible:bg-background focus-visible:ring-1"
+          />
         </div>
-        {selected.size > 0 && (
-          <div className="flex items-center gap-2 flex-wrap rounded-md border bg-muted/40 p-2">
-            <span className="text-sm font-medium px-2">{selected.size} selected</span>
 
-            <Select onValueChange={(v) => bulkUpdate("category_id", v === "none" ? null : v, "Category")}>
-              <SelectTrigger className="h-8 w-44"><SelectValue placeholder="Set category…" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="none">— Clear category —</SelectItem>
-                {categories.map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            <Button size="sm" variant="outline" onClick={() => bulkUpdate("excluded", true, "Exclude")}>
-              Exclude
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-9 text-muted-foreground font-normal">
+              <Calendar className="h-3.5 w-3.5 mr-2" />
+              {dateRangeLabel}
             </Button>
-            <Button size="sm" variant="outline" onClick={() => bulkUpdate("excluded", false, "Include")}>
-              Include
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => bulkUpdate("status", "posted", "Mark posted")}>
-              Mark posted
-            </Button>
-            <Button size="sm" variant="outline" onClick={() => bulkUpdate("status", "pending", "Mark pending")}>
-              Mark pending
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>
-              Clear
-            </Button>
-
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="h-4 w-4 mr-1" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Delete {selected.size} transaction{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This permanently removes the selected rows along with their tags and edit history. This cannot be undone.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={deleteSelected}>Delete</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </div>
-        )}
-      </header>
-
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Filters</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-            <Input placeholder="Search merchant…" value={search} onChange={e => setSearch(e.target.value)} />
-            <Select value={accountId} onValueChange={setAccountId}>
-              <SelectTrigger><SelectValue placeholder="Account" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All accounts</SelectItem>
-                {accounts.map((a: any) => (
-                  <SelectItem key={a.id} value={a.id}>{a.name}{a.mask ? ` ····${a.mask}` : ""}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={categoryId} onValueChange={setCategoryId}>
-              <SelectTrigger><SelectValue placeholder="Category" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All categories</SelectItem>
-                {categories.map((c: any) => (
-                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <label className="flex items-center gap-2 text-sm">
-              <Checkbox checked={showExcluded} onCheckedChange={v => setShowExcluded(!!v)} />
-              Show excluded
-            </label>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3 items-center">
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 space-y-3">
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">From</label>
-              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} className="h-9" />
             </div>
             <div className="space-y-1">
               <label className="text-xs text-muted-foreground">To</label>
-              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} className="h-9" />
             </div>
-            <div className="flex gap-2 md:col-span-2 md:justify-end pt-5">
-              {(dateFrom || dateTo) && (
-                <button
-                  className="text-xs text-muted-foreground hover:text-foreground underline"
-                  onClick={() => { setDateFrom(""); setDateTo(""); }}
-                >
-                  Clear date range
-                </button>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+            {(dateFrom || dateTo) && (
+              <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={() => { setDateFrom(""); setDateTo(""); }}>
+                Clear
+              </Button>
+            )}
+          </PopoverContent>
+        </Popover>
 
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead className="text-left text-xs text-muted-foreground border-b">
-                <tr>
-                  <th className="px-4 py-3 w-10">
-                    <Checkbox
-                      checked={txns.length > 0 && selected.size === txns.length}
-                      onCheckedChange={(v) => toggleAll(!!v)}
-                    />
-                  </th>
-                  <th className="px-4 py-3 w-32">
-                    <button
-                      type="button"
-                      onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
-                      className="inline-flex items-center gap-1 hover:text-foreground"
-                    >
-                      Date {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-                    </button>
-                  </th>
-                  <th className="px-4 py-3">Merchant</th>
-                  <th className="px-4 py-3">Account</th>
-                  <th className="px-4 py-3">Category</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3 text-right">Amount</th>
-                  <th className="px-4 py-3 text-center">Excluded</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {(txns as any[]).map((t) => (
-                  <tr key={t.id} className={`hover:bg-muted/40 ${selected.has(t.id) ? "bg-muted/30" : ""}`}>
-                    <td className="px-4 py-2.5">
-                      <Checkbox
-                        checked={selected.has(t.id)}
-                        onCheckedChange={(v) => toggleOne(t.id, !!v)}
-                      />
-                    </td>
-                    <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.date)}</td>
-                    <td className="px-4 py-2.5 font-medium">{t.name}</td>
-                    <td className="px-4 py-2.5 text-muted-foreground">
-                      {t.accounts?.name ?? "—"}{t.accounts?.mask ? ` ····${t.accounts.mask}` : ""}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Select
-                        value={t.category_id ?? "none"}
-                        onValueChange={(v) => updateField(t.id, "category_id", t.category_id, v === "none" ? null : v)}
-                      >
-                        <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="none">— None —</SelectItem>
-                          {categories.map((c: any) => (
-                            <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <Badge variant={t.status === "pending" ? "outline" : "secondary"}>{t.status}</Badge>
-                    </td>
-                    <td className="px-4 py-2.5 text-right tabular-nums">{fmtCurrency(Number(t.amount))}</td>
-                    <td className="px-4 py-2.5 text-center">
-                      <Checkbox
-                        checked={t.excluded}
-                        onCheckedChange={(v) => updateField(t.id, "excluded", t.excluded, !!v)}
-                      />
-                    </td>
-                  </tr>
-                ))}
-                {txns.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No transactions match.</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
-        </CardContent>
-      </Card>
+        <Select value={accountId} onValueChange={setAccountId}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All accounts</SelectItem>
+            {accounts.map((a: any) => (
+              <SelectItem key={a.id} value={a.id}>{a.name}{a.mask ? ` ····${a.mask}` : ""}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select value={categoryId} onValueChange={setCategoryId}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All categories</SelectItem>
+            {categories.map((c: any) => (
+              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Button
+          variant="ghost"
+          size="sm"
+          className={`h-9 font-normal ${showExcluded ? "text-foreground" : "text-muted-foreground"}`}
+          onClick={() => setShowExcluded(v => !v)}
+        >
+          {showExcluded ? "Hide excluded" : "Show excluded"}
+        </Button>
+
+        {activeFilterCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-9 text-muted-foreground"
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
+          >
+            <X className="h-3.5 w-3.5 mr-1" />
+            Reset
+          </Button>
+        )}
+      </div>
+
+      {/* Table */}
+      <div>
+        <div className="grid grid-cols-[24px_100px_1fr_180px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
+          <Checkbox
+            checked={txns.length > 0 && selected.size === txns.length}
+            onCheckedChange={(v) => toggleAll(!!v)}
+          />
+          <button
+            type="button"
+            onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
+            className="inline-flex items-center gap-1 hover:text-foreground text-left"
+          >
+            Date {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+          </button>
+          <span>Merchant</span>
+          <span>Category</span>
+          <span className="text-right">Amount</span>
+        </div>
+
+        <div>
+          {(txns as any[]).map((t) => {
+            const isSelected = selected.has(t.id);
+            return (
+              <div
+                key={t.id}
+                className={`group grid grid-cols-[24px_100px_1fr_180px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
+                  isSelected ? "bg-muted/40" : "hover:bg-muted/20"
+                } ${t.excluded ? "opacity-50" : ""}`}
+              >
+                <Checkbox
+                  checked={isSelected}
+                  onCheckedChange={(v) => toggleOne(t.id, !!v)}
+                  className={isSelected ? "" : "opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity"}
+                />
+                <span className="text-sm text-muted-foreground tabular-nums">{fmtDate(t.date)}</span>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium truncate">{t.name}</span>
+                    {t.status === "pending" && (
+                      <span className="text-[10px] uppercase tracking-wider text-muted-foreground">pending</span>
+                    )}
+                  </div>
+                  {t.accounts?.name && (
+                    <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                      {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
+                    </div>
+                  )}
+                </div>
+                <Select
+                  value={t.category_id ?? "none"}
+                  onValueChange={(v) => updateField(t.id, "category_id", t.category_id, v === "none" ? null : v)}
+                >
+                  <SelectTrigger className="h-8 border-0 bg-transparent text-sm hover:bg-muted/60 focus:ring-0 px-2 -ml-2">
+                    <SelectValue placeholder="Uncategorized" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">— None —</SelectItem>
+                    {categories.map((c: any) => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <span className="text-sm text-right tabular-nums font-medium">
+                  {fmtCurrency(Number(t.amount))}
+                </span>
+              </div>
+            );
+          })}
+          {txns.length === 0 && (
+            <div className="py-20 text-center text-sm text-muted-foreground">No transactions match.</div>
+          )}
+        </div>
+      </div>
+
+      {/* Floating bulk action bar */}
+      {selected.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-1 rounded-full border bg-background/95 backdrop-blur px-2 py-1.5 shadow-lg">
+          <span className="text-sm font-medium px-3">{selected.size} selected</span>
+          <div className="h-5 w-px bg-border" />
+
+          <Select onValueChange={(v) => bulkUpdate("category_id", v === "none" ? null : v, "Category")}>
+            <SelectTrigger className="h-8 w-40 border-0 bg-transparent text-sm hover:bg-muted/60 focus:ring-0">
+              <SelectValue placeholder="Set category" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">— Clear —</SelectItem>
+              {categories.map((c: any) => (
+                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => bulkUpdate("excluded", true, "Exclude")}>Exclude</Button>
+          <Button size="sm" variant="ghost" className="h-8" onClick={() => bulkUpdate("excluded", false, "Include")}>Include</Button>
+
+          <div className="h-5 w-px bg-border" />
+
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button size="sm" variant="ghost" className="h-8 text-destructive hover:text-destructive hover:bg-destructive/10">
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {selected.size} transaction{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently removes the selected rows along with their tags and edit history. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteSelected}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+
+          <Button size="sm" variant="ghost" className="h-8 w-8 p-0" onClick={() => setSelected(new Set())}>
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
