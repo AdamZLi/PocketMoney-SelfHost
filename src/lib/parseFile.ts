@@ -121,4 +121,3 @@ export async function parseFile(file: File, merchantAliases: CompiledAlias[] = [
   if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return parseXLSX(file, merchantAliases);
   throw new Error("PDF parsing not yet implemented in Phase 1 client. Use CSV or XLSX for now.");
 }
-}
