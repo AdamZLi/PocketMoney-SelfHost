@@ -115,7 +115,7 @@ const Aliases = () => {
         }
       }
       if (updates.length === 0) {
-        toast({ title: "Nothing to update", description: "All transaction names already match the current rules." });
+        if (!silent) toast({ title: "Nothing to update", description: "All transaction names already match the current rules." });
         return;
       }
       // Apply in batches
