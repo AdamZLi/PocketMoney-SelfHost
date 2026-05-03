@@ -818,6 +818,21 @@ const Transactions = () => {
           </SelectContent>
         </Select>
 
+        {reviewCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-9 font-normal gap-1.5 ${reviewOnly ? "text-amber-700" : "text-muted-foreground"}`}
+            onClick={() => setReviewOnly(v => !v)}
+          >
+            <Flag className="h-3.5 w-3.5" />
+            Review
+            <Badge variant="outline" className="ml-0.5 h-5 px-1.5 text-[10px] border-amber-500/60 text-amber-700">
+              {reviewCount}
+            </Badge>
+          </Button>
+        )}
+
         <Button
           variant="ghost"
           size="sm"
