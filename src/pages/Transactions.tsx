@@ -8,7 +8,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 const Transactions = () => {
   const qc = useQueryClient();
@@ -19,6 +24,7 @@ const Transactions = () => {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -63,6 +69,33 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] });
   }
 
+  function toggleOne(id: string, checked: boolean) {
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (checked) next.add(id); else next.delete(id);
+      return next;
+    });
+  }
+  function toggleAll(checked: boolean) {
+    setSelected(checked ? new Set((txns as any[]).map(t => t.id)) : new Set());
+  }
+
+  async function deleteSelected() {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    // transaction_tags / transaction_edits cascade via FK ON DELETE CASCADE on transaction_id (edits has no FK; clean it manually)
+    await supabase.from("transaction_edits").delete().in("transaction_id", ids);
+    await supabase.from("transaction_tags").delete().in("transaction_id", ids);
+    const { error } = await supabase.from("transactions").delete().in("id", ids);
+    if (error) {
+      toast({ title: "Delete failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    toast({ title: `Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <header className="flex items-end justify-between">
@@ -70,6 +103,28 @@ const Transactions = () => {
           <h1 className="text-3xl font-semibold tracking-tight">Transactions</h1>
           <p className="text-sm text-muted-foreground mt-1">{txns.length} rows · {fmtCurrency(total)} total</p>
         </div>
+        {selected.size > 0 && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive" size="sm">
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete {selected.size} selected
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete {selected.size} transaction{selected.size === 1 ? "" : "s"}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This permanently removes the selected rows along with their tags and edit history. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction onClick={deleteSelected}>Delete</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </header>
 
       <Card>
@@ -131,6 +186,12 @@ const Transactions = () => {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
                 <tr>
+                  <th className="px-4 py-3 w-10">
+                    <Checkbox
+                      checked={txns.length > 0 && selected.size === txns.length}
+                      onCheckedChange={(v) => toggleAll(!!v)}
+                    />
+                  </th>
                   <th className="px-4 py-3 w-32">
                     <button
                       type="button"
@@ -150,7 +211,13 @@ const Transactions = () => {
               </thead>
               <tbody className="divide-y">
                 {(txns as any[]).map((t) => (
-                  <tr key={t.id} className="hover:bg-muted/40">
+                  <tr key={t.id} className={`hover:bg-muted/40 ${selected.has(t.id) ? "bg-muted/30" : ""}`}>
+                    <td className="px-4 py-2.5">
+                      <Checkbox
+                        checked={selected.has(t.id)}
+                        onCheckedChange={(v) => toggleOne(t.id, !!v)}
+                      />
+                    </td>
                     <td className="px-4 py-2.5 text-muted-foreground">{fmtDate(t.date)}</td>
                     <td className="px-4 py-2.5 font-medium">{t.name}</td>
                     <td className="px-4 py-2.5 text-muted-foreground">
@@ -183,7 +250,7 @@ const Transactions = () => {
                   </tr>
                 ))}
                 {txns.length === 0 && (
-                  <tr><td colSpan={7} className="px-4 py-12 text-center text-muted-foreground">No transactions match.</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-muted-foreground">No transactions match.</td></tr>
                 )}
               </tbody>
             </table>
