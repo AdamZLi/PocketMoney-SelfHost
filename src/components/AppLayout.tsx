@@ -1,5 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, Receipt, Upload, Wallet, Tags } from "lucide-react";
+import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const nav = [
@@ -8,6 +8,7 @@ const nav = [
   { to: "/import", label: "Import", icon: Upload },
   { to: "/accounts", label: "Accounts", icon: Wallet },
   { to: "/categories", label: "Categories", icon: Tags },
+  { to: "/aliases", label: "Merchant Aliases", icon: Sparkles },
 ];
 
 export const AppLayout = () => {
