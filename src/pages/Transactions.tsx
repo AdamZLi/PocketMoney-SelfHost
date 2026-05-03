@@ -8,7 +8,8 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2 } from "lucide-react";
+import { applyRules, type Rule } from "@/lib/categorize";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -35,6 +36,8 @@ const Transactions = () => {
   const [ruleSuggestion, setRuleSuggestion] = useState<RuleSuggestion | null>(null);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [applying, setApplying] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -195,6 +198,117 @@ const Transactions = () => {
     }
   }
 
+  // AI scan: categorize all uncategorized transactions.
+  // Rule-based matches always take precedence; the AI agent only sees
+  // merchants that no rule could resolve.
+  async function aiScanCategorize() {
+    if (scanning) return;
+    setScanning(true);
+    setScanProgress({ done: 0, total: 0, updated: 0 });
+    try {
+      const { data: pending, error } = await supabase
+        .from("transactions")
+        .select("id,name")
+        .is("category_id", null)
+        .eq("excluded", false);
+      if (error) throw error;
+      const list = (pending ?? []) as { id: string; name: string }[];
+      if (list.length === 0) {
+        toast({ title: "Nothing to scan", description: "All transactions are already categorized." });
+        return;
+      }
+
+      const { data: ruleRows } = await supabase
+        .from("category_rules")
+        .select("id,category_id,match_type,pattern,priority");
+      const rules: Rule[] = (ruleRows ?? []) as any;
+
+      const ruleAssigned: { id: string; category_id: string }[] = [];
+      const byName = new Map<string, { id: string; name: string }[]>();
+      for (const t of list) {
+        const cat = applyRules(t.name, rules);
+        if (cat) {
+          ruleAssigned.push({ id: t.id, category_id: cat });
+        } else {
+          const key = t.name.trim().toLowerCase();
+          if (!byName.has(key)) byName.set(key, []);
+          byName.get(key)!.push(t);
+        }
+      }
+      const remaining = [...byName.values()].map((g) => g[0]);
+
+      let updated = 0;
+
+      if (ruleAssigned.length > 0) {
+        const byCat = new Map<string, string[]>();
+        for (const r of ruleAssigned) {
+          if (!byCat.has(r.category_id)) byCat.set(r.category_id, []);
+          byCat.get(r.category_id)!.push(r.id);
+        }
+        for (const [catId, ids] of byCat) {
+          const { error: upErr } = await supabase
+            .from("transactions")
+            .update({ category_id: catId } as any)
+            .in("id", ids);
+          if (!upErr) updated += ids.length;
+        }
+      }
+      setScanProgress({ done: ruleAssigned.length, total: list.length, updated });
+
+      const CHUNK = 50;
+      for (let i = 0; i < remaining.length; i += CHUNK) {
+        const chunk = remaining.slice(i, i + CHUNK);
+        const { data: aiData, error: aiErr } = await supabase.functions.invoke(
+          "suggest-categories",
+          {
+            body: {
+              merchants: chunk.map((m) => ({ id: m.id, name: m.name })),
+              categories: (categories as any[]).map((c) => ({
+                id: c.id,
+                name: c.name,
+                parent_category: c.parent_category,
+              })),
+            },
+          },
+        );
+        if (aiErr) {
+          toast({ title: "AI scan paused", description: aiErr.message, variant: "destructive" });
+          break;
+        }
+        const suggestions: { id: string; category_id: string | null }[] =
+          aiData?.suggestions ?? [];
+
+        for (const s of suggestions) {
+          if (!s.category_id) continue;
+          const repr = chunk.find((m) => m.id === s.id);
+          if (!repr) continue;
+          const groupKey = repr.name.trim().toLowerCase();
+          const allIds = byName.get(groupKey)?.map((t) => t.id) ?? [repr.id];
+          const { error: upErr } = await supabase
+            .from("transactions")
+            .update({ category_id: s.category_id } as any)
+            .in("id", allIds);
+          if (!upErr) updated += allIds.length;
+        }
+        setScanProgress((p) =>
+          p ? { ...p, done: Math.min(p.total, ruleAssigned.length + i + chunk.length), updated } : null,
+        );
+      }
+
+      toast({
+        title: "AI scan complete",
+        description: `Categorized ${updated} of ${list.length} transactions.`,
+      });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["categories", "usage"] });
+    } catch (e: any) {
+      toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setScanning(false);
+      setTimeout(() => setScanProgress(null), 2500);
+    }
+  }
+
   function toggleOne(id: string, checked: boolean) {
     setSelected(prev => {
       const next = new Set(prev);
@@ -244,13 +358,37 @@ const Transactions = () => {
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
       {/* Title */}
-      <div className="mb-10">
-        <h1 className="text-2xl font-medium tracking-tight">Transactions</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          {txns.length} {txns.length === 1 ? "row" : "rows"}
-          <span className="mx-2 text-border">·</span>
-          {fmtCurrency(total)}
-        </p>
+      <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Transactions</h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            {txns.length} {txns.length === 1 ? "row" : "rows"}
+            <span className="mx-2 text-border">·</span>
+            {fmtCurrency(total)}
+            {scanProgress && (
+              <>
+                <span className="mx-2 text-border">·</span>
+                <span className="text-foreground/70">
+                  Scanning {scanProgress.done}/{scanProgress.total} · {scanProgress.updated} categorized
+                </span>
+              </>
+            )}
+          </p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={aiScanCategorize}
+          disabled={scanning}
+          className="h-9 gap-2"
+        >
+          {scanning ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Sparkles className="h-3.5 w-3.5" />
+          )}
+          {scanning ? "Scanning…" : "AI scan & categorize"}
+        </Button>
       </div>
 
       {/* Toolbar */}
