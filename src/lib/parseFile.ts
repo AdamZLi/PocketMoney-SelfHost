@@ -78,7 +78,8 @@ function toTags(v: any): string[] {
 
 export function normalizeRow(row: RawRow): ParsedTxn | null {
   const date = toISODate(pick(row, aliases.date));
-  const name = String(pick(row, aliases.name) ?? "").trim();
+  const rawName = String(pick(row, aliases.name) ?? "").trim();
+  const name = cleanMerchant(rawName);
   const amount = toNumber(pick(row, aliases.amount));
   if (!date || !name) return null;
   const statusRaw = String(pick(row, aliases.status) ?? "posted").toLowerCase();
