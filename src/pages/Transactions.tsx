@@ -107,22 +107,35 @@ const Transactions = () => {
   }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (!showExcluded) q = q.eq("excluded", false);
+      if (reviewOnly) q = q.eq("needs_review", true);
       if (search) q = q.ilike("name", `%${search}%`);
       if (dateFrom) q = q.gte("date", dateFrom);
       if (dateTo) q = q.lte("date", dateTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  // Count of transactions needing review (drives the badge in the toolbar).
+  const { data: reviewCount = 0 } = useQuery({
+    queryKey: ["txns", "review-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("needs_review", true);
+      return count ?? 0;
     },
   });
 
