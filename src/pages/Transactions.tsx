@@ -96,6 +96,25 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] });
   }
 
+  async function bulkUpdate(field: string, value: any, label: string) {
+    const ids = Array.from(selected);
+    if (ids.length === 0) return;
+    const { error } = await supabase.from("transactions").update({ [field]: value } as any).in("id", ids);
+    if (error) {
+      toast({ title: "Update failed", description: error.message, variant: "destructive" });
+      return;
+    }
+    await supabase.from("transaction_edits").insert(
+      ids.map(id => ({
+        transaction_id: id, field_changed: field,
+        old_value: null as any, new_value: value as any,
+      }))
+    );
+    toast({ title: `${label} applied to ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
+    setSelected(new Set());
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <header className="flex items-end justify-between">
