@@ -392,7 +392,7 @@ const Transactions = () => {
         <Button
           variant="outline"
           size="sm"
-          onClick={aiScanCategorize}
+          onClick={() => setScanOpen(true)}
           disabled={scanning}
           className="h-9 gap-2"
         >
@@ -404,6 +404,67 @@ const Transactions = () => {
           {scanning ? "Scanning…" : "AI scan & categorize"}
         </Button>
       </div>
+
+      <Dialog open={scanOpen} onOpenChange={(o) => !scanning && setScanOpen(o)}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>AI scan & categorize</DialogTitle>
+            <DialogDescription>
+              Choose which transactions to analyze. Existing rules apply first; the AI agent only categorizes the rest.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Category</Label>
+              <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                  <SelectItem value="all">All transactions</SelectItem>
+                  {(categories as any[]).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Account</Label>
+              <Select value={scanAccountId} onValueChange={setScanAccountId}>
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All accounts</SelectItem>
+                  {(accounts as any[]).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">From</Label>
+                <Input type="date" value={scanFrom} onChange={(e) => setScanFrom(e.target.value)} className="h-9" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">To</Label>
+                <Input type="date" value={scanTo} onChange={(e) => setScanTo(e.target.value)} className="h-9" />
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setScanOpen(false)} disabled={scanning}>Cancel</Button>
+            <Button
+              onClick={() => { setScanOpen(false); aiScanCategorize(); }}
+              disabled={scanning}
+              className="gap-2"
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Start scan
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
