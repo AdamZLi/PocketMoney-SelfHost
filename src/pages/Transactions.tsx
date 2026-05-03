@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag } from "lucide-react";
 import { applyRules, type Rule } from "@/lib/categorize";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -36,6 +36,7 @@ const Transactions = () => {
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [showExcluded, setShowExcluded] = useState(false);
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
@@ -106,22 +107,35 @@ const Transactions = () => {
   }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (!showExcluded) q = q.eq("excluded", false);
+      if (reviewOnly) q = q.eq("needs_review", true);
       if (search) q = q.ilike("name", `%${search}%`);
       if (dateFrom) q = q.gte("date", dateFrom);
       if (dateTo) q = q.lte("date", dateTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
+    },
+  });
+
+  // Count of transactions needing review (drives the badge in the toolbar).
+  const { data: reviewCount = 0 } = useQuery({
+    queryKey: ["txns", "review-count"],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .eq("needs_review", true);
+      return count ?? 0;
     },
   });
 
@@ -803,6 +817,21 @@ const Transactions = () => {
             ))}
           </SelectContent>
         </Select>
+
+        {reviewCount > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            className={`h-9 font-normal gap-1.5 ${reviewOnly ? "text-amber-700" : "text-muted-foreground"}`}
+            onClick={() => setReviewOnly(v => !v)}
+          >
+            <Flag className="h-3.5 w-3.5" />
+            Review
+            <Badge variant="outline" className="ml-0.5 h-5 px-1.5 text-[10px] border-amber-500/60 text-amber-700">
+              {reviewCount}
+            </Badge>
+          </Button>
+        )}
 
         <Button
           variant="ghost"

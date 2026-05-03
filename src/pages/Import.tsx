@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Upload, FileText, Sparkles, Loader2 } from "lucide-react";
+import { Upload, FileText, Sparkles, Loader2, AlertTriangle, Check, Copy, Flag } from "lucide-react";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 
 type Staged = ParsedTxn & {
@@ -22,12 +22,33 @@ type Staged = ParsedTxn & {
   _drop?: boolean;
 };
 
+type DupSource =
+  | { kind: "staged"; row: number }
+  | { kind: "existing"; id: string; date: string; name: string; amount: number };
+
+type DupGroup = {
+  key: string;
+  members: DupSource[];
+  // index in `members` representing the staged row to keep when action === "merge"
+  keepIndex: number;
+  action: "merge" | "keep_both" | "flag";
+};
+
+const FUZZY_DAYS = 1;
+
+function dateKey(d: string, offset = 0) {
+  const dt = new Date(d + "T00:00:00Z");
+  dt.setUTCDate(dt.getUTCDate() + offset);
+  return dt.toISOString().slice(0, 10);
+}
+
 const Import = () => {
   const qc = useQueryClient();
   const [staging, setStaging] = useState<Staged[]>([]);
   const [filename, setFilename] = useState("");
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
+  const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -64,6 +85,70 @@ const Import = () => {
     return data.id;
   }
 
+  // Detect duplicate groups: same merchant (lowercased) + same amount + date within ±FUZZY_DAYS.
+  // Compares staged rows against each other AND against existing DB transactions on the same account.
+  async function detectDuplicates(staged: Staged[]) {
+    if (staged.length === 0) return [];
+    const dates = staged.map(s => s.date).sort();
+    const min = dateKey(dates[0], -FUZZY_DAYS);
+    const max = dateKey(dates[dates.length - 1], FUZZY_DAYS);
+
+    const { data: existing } = await supabase
+      .from("transactions")
+      .select("id,date,name,amount,account_id")
+      .gte("date", min)
+      .lte("date", max);
+
+    // Bucket by (account_id, merchant lowered, amount)
+    const groups = new Map<string, DupSource[]>();
+    const bucketKey = (acct: string | null, name: string, amount: number) =>
+      `${acct ?? ""}|${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}`;
+
+    for (const s of staged) {
+      const k = bucketKey(s._account_id ?? null, s.name, s.amount);
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k)!.push({ kind: "staged", row: s._row });
+    }
+    for (const e of (existing ?? []) as any[]) {
+      const k = bucketKey(e.account_id ?? null, e.name, e.amount);
+      if (groups.has(k)) {
+        groups.get(k)!.push({ kind: "existing", id: e.id, date: e.date, name: e.name, amount: e.amount });
+      }
+    }
+
+    const stagedById = new Map(staged.map(s => [s._row, s]));
+    const result: DupGroup[] = [];
+    for (const [k, members] of groups) {
+      // Filter to members that have at least one staged row and total ≥2 within ±FUZZY_DAYS
+      const dated = members.map(m => {
+        if (m.kind === "staged") return { m, date: stagedById.get(m.row)!.date };
+        return { m, date: m.date };
+      });
+      // Keep only members within fuzzy window of any other
+      const close: typeof dated = [];
+      for (let i = 0; i < dated.length; i++) {
+        for (let j = 0; j < dated.length; j++) {
+          if (i === j) continue;
+          const d1 = new Date(dated[i].date).getTime();
+          const d2 = new Date(dated[j].date).getTime();
+          const diffDays = Math.abs(d1 - d2) / 86400000;
+          if (diffDays <= FUZZY_DAYS) {
+            if (!close.includes(dated[i])) close.push(dated[i]);
+            break;
+          }
+        }
+      }
+      const stagedCount = close.filter(d => d.m.kind === "staged").length;
+      if (close.length >= 2 && stagedCount >= 1) {
+        const ms = close.map(d => d.m);
+        // Default keep index: prefer the first staged row
+        const keepIndex = ms.findIndex(m => m.kind === "staged");
+        result.push({ key: k, members: ms, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "merge" });
+      }
+    }
+    return result;
+  }
+
   async function handleFile(file: File) {
     setBusy(true);
     try {
@@ -86,7 +171,12 @@ const Import = () => {
         staged.push({ ...p, _row: i, _category_id: cat_id, _account_id: account_id, _categorized_by: by });
       }
       setStaging(staged);
-      toast({ title: `Parsed ${staged.length} rows from ${file.name}` });
+      const dups = await detectDuplicates(staged);
+      setDupGroups(dups);
+      toast({
+        title: `Parsed ${staged.length} rows from ${file.name}`,
+        description: dups.length > 0 ? `Found ${dups.length} potential duplicate group${dups.length === 1 ? "" : "s"} to review.` : undefined,
+      });
     } catch (e: any) {
       toast({ title: "Parse failed", description: e.message, variant: "destructive" });
     } finally {
@@ -128,10 +218,33 @@ const Import = () => {
     }
   }
 
+  // Compute which staged rows the dup-group decisions force to drop or flag.
+  const dupDirectives = useMemo(() => {
+    const dropRows = new Set<number>();
+    const flagRows = new Map<number, string>();
+    for (const g of dupGroups) {
+      if (g.action === "merge") {
+        // Drop every staged member except the chosen keep
+        g.members.forEach((m, i) => {
+          if (m.kind === "staged" && i !== g.keepIndex) dropRows.add(m.row);
+        });
+        // If keep is an existing row, drop ALL staged members
+        if (g.members[g.keepIndex]?.kind === "existing") {
+          g.members.forEach(m => { if (m.kind === "staged") dropRows.add(m.row); });
+        }
+      } else if (g.action === "flag") {
+        const reason = `Possible duplicate of ${g.members.length - 1} other transaction${g.members.length - 1 === 1 ? "" : "s"}`;
+        g.members.forEach(m => { if (m.kind === "staged") flagRows.set(m.row, reason); });
+      }
+      // keep_both: no-op
+    }
+    return { dropRows, flagRows };
+  }, [dupGroups]);
+
   async function commit() {
     setBusy(true);
     try {
-      const rows = staging.filter(s => !s._drop);
+      const rows = staging.filter(s => !s._drop && !dupDirectives.dropRows.has(s._row));
       const { data: batch, error: bErr } = await supabase.from("import_batches").insert({
         filename, file_type: filename.split(".").pop() ?? null, status: "importing", total_rows: rows.length,
       }).select("id").single();
@@ -151,8 +264,24 @@ const Import = () => {
         source: "import" as const,
         import_batch_id: batch.id,
         raw_row: r.raw as any,
+        needs_review: dupDirectives.flagRows.has(r._row),
+        review_reason: dupDirectives.flagRows.get(r._row) ?? null,
       }));
-      // Insert ignoring conflicts on dedupe key (rows with same date+name+amount+account+status are skipped)
+      // Also flag matched existing rows when user chose "flag"
+      const existingFlagIds: string[] = [];
+      for (const g of dupGroups) {
+        if (g.action !== "flag") continue;
+        for (const m of g.members) {
+          if (m.kind === "existing") existingFlagIds.push(m.id);
+        }
+      }
+      if (existingFlagIds.length > 0) {
+        await supabase
+          .from("transactions")
+          .update({ needs_review: true, review_reason: "Possible duplicate flagged during import" } as any)
+          .in("id", existingFlagIds);
+      }
+
       const { error: txErr, count } = await supabase.from("transactions").upsert(payload, {
         onConflict: "date,name,amount,account_id,status",
         ignoreDuplicates: true,
@@ -160,8 +289,12 @@ const Import = () => {
       } as any);
       if (txErr) throw txErr;
       await supabase.from("import_batches").update({ status: "done", imported_rows: count ?? rows.length }).eq("id", batch.id);
-      toast({ title: `Imported ${count ?? rows.length} of ${rows.length} (duplicates skipped)` });
-      setStaging([]); setFilename("");
+      const flaggedTotal = dupDirectives.flagRows.size + existingFlagIds.length;
+      toast({
+        title: `Imported ${count ?? rows.length} of ${rows.length}`,
+        description: flaggedTotal > 0 ? `${flaggedTotal} transaction${flaggedTotal === 1 ? "" : "s"} flagged for review.` : undefined,
+      });
+      setStaging([]); setFilename(""); setDupGroups([]);
       qc.invalidateQueries();
     } catch (e: any) {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
@@ -169,6 +302,15 @@ const Import = () => {
       setBusy(false);
     }
   }
+
+  function setGroupAction(idx: number, action: DupGroup["action"]) {
+    setDupGroups(prev => prev.map((g, i) => i === idx ? { ...g, action } : g));
+  }
+  function setGroupKeep(idx: number, keepIndex: number) {
+    setDupGroups(prev => prev.map((g, i) => i === idx ? { ...g, keepIndex } : g));
+  }
+
+  const stagedById = useMemo(() => new Map(staging.map(s => [s._row, s])), [staging]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -203,6 +345,89 @@ const Import = () => {
         </Card>
       ) : (
         <>
+          {dupGroups.length > 0 && (
+            <Card className="border-amber-500/40 bg-amber-500/5">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600" />
+                  Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  Same merchant + amount within ±{FUZZY_DAYS} day. Compared across this import and existing transactions.
+                </p>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {dupGroups.map((g, gi) => (
+                  <div key={g.key} className="rounded-md border bg-background p-3 space-y-2">
+                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                      <div className="text-xs text-muted-foreground">
+                        {g.members.length} matching transactions
+                      </div>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant={g.action === "merge" ? "default" : "outline"}
+                          className="h-7 gap-1.5"
+                          onClick={() => setGroupAction(gi, "merge")}
+                        >
+                          <Copy className="h-3 w-3" /> Merge
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={g.action === "keep_both" ? "default" : "outline"}
+                          className="h-7 gap-1.5"
+                          onClick={() => setGroupAction(gi, "keep_both")}
+                        >
+                          <Check className="h-3 w-3" /> Keep both
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={g.action === "flag" ? "default" : "outline"}
+                          className="h-7 gap-1.5"
+                          onClick={() => setGroupAction(gi, "flag")}
+                        >
+                          <Flag className="h-3 w-3" /> Flag
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="divide-y">
+                      {g.members.map((m, mi) => {
+                        const isStaged = m.kind === "staged";
+                        const date = isStaged ? stagedById.get(m.row)?.date ?? "" : m.date;
+                        const name = isStaged ? stagedById.get(m.row)?.name ?? "" : m.name;
+                        const amount = isStaged ? stagedById.get(m.row)?.amount ?? 0 : m.amount;
+                        const isKept = g.action === "merge" && mi === g.keepIndex;
+                        const willDrop = g.action === "merge" && !isKept && isStaged;
+                        return (
+                          <div key={mi} className={`flex items-center gap-3 py-2 text-sm ${willDrop ? "opacity-50" : ""}`}>
+                            <div className="w-24 text-xs text-muted-foreground tabular-nums">{fmtDate(date)}</div>
+                            <div className="flex-1 truncate">
+                              {name}
+                              <Badge variant="outline" className="ml-2 text-[10px]">
+                                {isStaged ? "new" : "existing"}
+                              </Badge>
+                            </div>
+                            <div className="tabular-nums w-24 text-right">{fmtCurrency(amount)}</div>
+                            {g.action === "merge" && (
+                              <Button
+                                size="sm"
+                                variant={isKept ? "secondary" : "ghost"}
+                                className="h-7 text-xs"
+                                onClick={() => setGroupKeep(gi, mi)}
+                              >
+                                {isKept ? "Keep" : "Use this"}
+                              </Button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
           <Card>
             <CardHeader className="flex flex-row items-center justify-between">
               <div>
@@ -212,6 +437,12 @@ const Import = () => {
                   {staging.filter(s => s._categorized_by === "rule").length} matched by rule ·{" "}
                   {staging.filter(s => s._categorized_by === "ai").length} by AI ·{" "}
                   {staging.filter(s => !s._category_id).length} uncategorized
+                  {dupDirectives.dropRows.size > 0 && (
+                    <> · <span className="text-amber-700">{dupDirectives.dropRows.size} will be deduped</span></>
+                  )}
+                  {dupDirectives.flagRows.size > 0 && (
+                    <> · <span className="text-amber-700">{dupDirectives.flagRows.size} flagged</span></>
+                  )}
                 </p>
               </div>
               <div className="flex gap-2">
@@ -220,7 +451,7 @@ const Import = () => {
                   AI categorize
                 </Button>
                 <Button onClick={commit} disabled={busy}>Commit import</Button>
-                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); }}>Cancel</Button>
+                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); setDupGroups([]); }}>Cancel</Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
@@ -237,48 +468,60 @@ const Import = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {staging.map(s => (
-                      <tr key={s._row} className={s._drop ? "opacity-40" : ""}>
-                        <td className="px-3 py-2 text-muted-foreground">{fmtDate(s.date)}</td>
-                        <td className="px-3 py-2 font-medium">
-                          {s.name}
-                          <Badge variant="outline" className="ml-2 text-[10px]">{s._categorized_by}</Badge>
-                        </td>
-                        <td className="px-3 py-2 text-muted-foreground text-xs">
-                          {s.account_name}{s.account_mask ? ` ····${s.account_mask}` : ""}
-                        </td>
-                        <td className="px-3 py-2">
-                          <Select
-                            value={s._category_id ?? "none"}
-                            onValueChange={(v) => {
+                    {staging.map(s => {
+                      const willDrop = s._drop || dupDirectives.dropRows.has(s._row);
+                      const willFlag = dupDirectives.flagRows.has(s._row);
+                      return (
+                        <tr key={s._row} className={willDrop ? "opacity-40" : ""}>
+                          <td className="px-3 py-2 text-muted-foreground">{fmtDate(s.date)}</td>
+                          <td className="px-3 py-2 font-medium">
+                            {s.name}
+                            <Badge variant="outline" className="ml-2 text-[10px]">{s._categorized_by}</Badge>
+                            {willFlag && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px] border-amber-500/60 text-amber-700">
+                                <Flag className="h-2.5 w-2.5 mr-1" />flagged
+                              </Badge>
+                            )}
+                            {dupDirectives.dropRows.has(s._row) && !s._drop && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px]">duplicate</Badge>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-muted-foreground text-xs">
+                            {s.account_name}{s.account_mask ? ` ····${s.account_mask}` : ""}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Select
+                              value={s._category_id ?? "none"}
+                              onValueChange={(v) => {
+                                const next = [...staging];
+                                const i = next.findIndex(x => x._row === s._row);
+                                next[i]._category_id = v === "none" ? null : v;
+                                setStaging(next);
+                              }}
+                            >
+                              <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">— None —</SelectItem>
+                                {(categories as any[]).map(c => (
+                                  <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(s.amount)}</td>
+                          <td className="px-3 py-2">
+                            <Button size="sm" variant="ghost" onClick={() => {
                               const next = [...staging];
                               const i = next.findIndex(x => x._row === s._row);
-                              next[i]._category_id = v === "none" ? null : v;
+                              next[i]._drop = !next[i]._drop;
                               setStaging(next);
-                            }}
-                          >
-                            <SelectTrigger className="h-8 w-44"><SelectValue /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="none">— None —</SelectItem>
-                              {(categories as any[]).map(c => (
-                                <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </td>
-                        <td className="px-3 py-2 text-right tabular-nums">{fmtCurrency(s.amount)}</td>
-                        <td className="px-3 py-2">
-                          <Button size="sm" variant="ghost" onClick={() => {
-                            const next = [...staging];
-                            const i = next.findIndex(x => x._row === s._row);
-                            next[i]._drop = !next[i]._drop;
-                            setStaging(next);
-                          }}>
-                            {s._drop ? "Keep" : "Drop"}
-                          </Button>
-                        </td>
-                      </tr>
-                    ))}
+                            }}>
+                              {s._drop ? "Keep" : "Drop"}
+                            </Button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

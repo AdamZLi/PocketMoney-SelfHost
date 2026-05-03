@@ -305,10 +305,12 @@ export type Database = {
           id: string
           import_batch_id: string | null
           name: string
+          needs_review: boolean
           note: string | null
           plaid_transaction_id: string | null
           raw_row: Json | null
           recurring: string | null
+          review_reason: string | null
           source: Database["public"]["Enums"]["txn_source"]
           status: Database["public"]["Enums"]["txn_status"]
           type: string | null
@@ -324,10 +326,12 @@ export type Database = {
           id?: string
           import_batch_id?: string | null
           name: string
+          needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
           raw_row?: Json | null
           recurring?: string | null
+          review_reason?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
           type?: string | null
@@ -343,10 +347,12 @@ export type Database = {
           id?: string
           import_batch_id?: string | null
           name?: string
+          needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
           raw_row?: Json | null
           recurring?: string | null
+          review_reason?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
           type?: string | null
