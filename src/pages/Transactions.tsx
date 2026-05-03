@@ -30,17 +30,19 @@ const Transactions = () => {
   });
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, showExcluded }],
+    queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
         .select("id,date,name,amount,status,excluded,note,category_id,account_id,categories(name,color),accounts(name,mask)")
-        .order("date", { ascending: false })
+        .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (!showExcluded) q = q.eq("excluded", false);
       if (search) q = q.ilike("name", `%${search}%`);
+      if (dateFrom) q = q.gte("date", dateFrom);
+      if (dateTo) q = q.lte("date", dateTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
