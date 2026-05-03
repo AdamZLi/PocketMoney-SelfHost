@@ -3,6 +3,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
 import { applyRules } from "@/lib/categorize";
+import { loadAliases } from "@/lib/cleanMerchant";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
