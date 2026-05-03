@@ -40,10 +40,40 @@ const Transactions = () => {
     queryKey: ["accounts"],
     queryFn: async () => (await supabase.from("accounts").select("id,name,mask").order("name")).data ?? [],
   });
-  const { data: categories = [] } = useQuery({
+  const { data: categoriesRaw = [] } = useQuery({
     queryKey: ["categories"],
     queryFn: async () => (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
   });
+  // Frequency map: how many transactions use each category. Drives the ordering
+  // of the category combobox so the most-used categories surface first.
+  const { data: categoryUsage = {} } = useQuery({
+    queryKey: ["categories", "usage"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("category_id")
+        .not("category_id", "is", null)
+        .limit(10000);
+      if (error) throw error;
+      const counts: Record<string, number> = {};
+      for (const row of data ?? []) {
+        const id = (row as any).category_id as string | null;
+        if (!id) continue;
+        counts[id] = (counts[id] ?? 0) + 1;
+      }
+      return counts;
+    },
+  });
+  const categories = useMemo(() => {
+    const arr = [...(categoriesRaw as any[])];
+    arr.sort((a, b) => {
+      const ua = (categoryUsage as Record<string, number>)[a.id] ?? 0;
+      const ub = (categoryUsage as Record<string, number>)[b.id] ?? 0;
+      if (ub !== ua) return ub - ua;
+      return a.name.localeCompare(b.name);
+    });
+    return arr;
+  }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
     queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
@@ -76,7 +106,7 @@ const Transactions = () => {
     await supabase.from("transaction_edits").insert({
       transaction_id: id, field_changed: field, old_value: oldVal, new_value: newVal,
     });
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   // When a single transaction's category changes via the inline dropdown,
@@ -155,7 +185,7 @@ const Transactions = () => {
         title: "Rule applied",
         description: `${categoryName} set on ${ids.length} transaction${ids.length === 1 ? "" : "s"}.`,
       });
-      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
       qc.invalidateQueries({ queryKey: ["rules"] });
     } catch (e: any) {
       toast({ title: "Failed", description: e.message ?? String(e), variant: "destructive" });
@@ -185,7 +215,7 @@ const Transactions = () => {
     if (error) { toast({ title: "Delete failed", description: error.message, variant: "destructive" }); return; }
     toast({ title: `Deleted ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   async function bulkUpdate(field: string, value: any, label: string) {
@@ -198,7 +228,7 @@ const Transactions = () => {
     );
     toast({ title: `${label} applied to ${ids.length} transaction${ids.length === 1 ? "" : "s"}` });
     setSelected(new Set());
-    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
   const dateRangeLabel = dateFrom || dateTo
