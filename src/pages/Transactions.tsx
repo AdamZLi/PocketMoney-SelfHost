@@ -24,6 +24,7 @@ const Transactions = () => {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
