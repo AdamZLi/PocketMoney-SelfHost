@@ -36,6 +36,7 @@ const Transactions = () => {
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [showExcluded, setShowExcluded] = useState(false);
+  const [reviewOnly, setReviewOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
