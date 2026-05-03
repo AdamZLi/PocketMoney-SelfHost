@@ -36,6 +36,8 @@ const Transactions = () => {
   const [ruleSuggestion, setRuleSuggestion] = useState<RuleSuggestion | null>(null);
   const [matchCount, setMatchCount] = useState<number>(0);
   const [applying, setApplying] = useState(false);
+  const [scanning, setScanning] = useState(false);
+  const [scanProgress, setScanProgress] = useState<{ done: number; total: number; updated: number } | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
