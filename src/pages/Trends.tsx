@@ -452,7 +452,14 @@ const Trends = () => {
                     verticalAlign="bottom"
                     iconType="square"
                     wrapperStyle={{ fontSize: 12, paddingTop: 12, cursor: "pointer" }}
-                    onClick={(e: any) => e?.dataKey && handleBarClick(e.dataKey)}
+                    payload={categories.map((c, i) => ({
+                      value: c,
+                      type: "square",
+                      id: c,
+                      color: PALETTE[i % PALETTE.length],
+                      dataKey: c,
+                    }))}
+                    onClick={(e: any) => e?.dataKey && handleBarClick(String(e.dataKey))}
                   />
                 </ComposedChart>
               </ResponsiveContainer>
