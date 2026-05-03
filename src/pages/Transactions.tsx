@@ -448,24 +448,52 @@ const Transactions = () => {
       )}
 
       {/* Suggest a categorization rule when a single transaction is recategorized */}
-      <AlertDialog open={!!ruleSuggestion} onOpenChange={(o) => !o && !applying && setRuleSuggestion(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Apply to all "{ruleSuggestion?.merchantName}"?</AlertDialogTitle>
-            <AlertDialogDescription>
-              {matchCount === 0
-                ? `No other transactions match this merchant yet, but a rule will categorize future ones as ${ruleSuggestion?.categoryName}.`
-                : `Set ${matchCount} other transaction${matchCount === 1 ? "" : "s"} from “${ruleSuggestion?.merchantName}” to ${ruleSuggestion?.categoryName} and add a categorization rule so future imports follow the same pattern.`}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={applying}>Just this one</AlertDialogCancel>
-            <AlertDialogAction onClick={applyRuleToAll} disabled={applying}>
-              {applying ? "Applying…" : "Apply to all & add rule"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      {/* Lightweight, non-blocking suggestion that appears after recategorizing.
+          Auto-dismisses if ignored; never blocks the rest of the UI. */}
+      {ruleSuggestion && (
+        <div
+          role="status"
+          className="fixed bottom-6 right-6 z-50 w-[340px] rounded-xl border border-border/70 bg-background/95 backdrop-blur shadow-lg p-4 animate-in slide-in-from-bottom-2 fade-in"
+        >
+          <div className="flex items-start justify-between gap-3 mb-1">
+            <div className="text-sm font-medium leading-snug">
+              Apply to all{" "}
+              <span className="text-foreground/70">"{ruleSuggestion.merchantName}"</span>?
+            </div>
+            <button
+              onClick={() => !applying && setRuleSuggestion(null)}
+              className="text-muted-foreground hover:text-foreground -mr-1 -mt-0.5"
+              aria-label="Dismiss"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            {matchCount === 0
+              ? `No other matches yet — a rule will tag future ones as ${ruleSuggestion.categoryName}.`
+              : `Set ${matchCount} other ${matchCount === 1 ? "transaction" : "transactions"} to ${ruleSuggestion.categoryName} and remember this for future imports.`}
+          </p>
+          <div className="mt-3 flex items-center justify-end gap-1.5">
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 text-xs"
+              disabled={applying}
+              onClick={() => setRuleSuggestion(null)}
+            >
+              Just this one
+            </Button>
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              disabled={applying}
+              onClick={applyRuleToAll}
+            >
+              {applying ? "Applying…" : "Apply to all"}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
