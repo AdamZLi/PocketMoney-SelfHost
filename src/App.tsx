@@ -27,6 +27,7 @@ const App = () => (
             <Route path="/import" element={<Import />} />
             <Route path="/accounts" element={<Accounts />} />
             <Route path="/categories" element={<Categories />} />
+            <Route path="/aliases" element={<Aliases />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
