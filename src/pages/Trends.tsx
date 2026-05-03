@@ -165,7 +165,7 @@ const Trends = () => {
     });
 
     return { chartData: data, categories: cats, totalsByMonth };
-  }, [rows, buckets, categoryBucket]);
+  }, [rows, buckets]);
 
   const grandTotal = [...totalsByMonth.values()].reduce((a, b) => a + b, 0);
   const nonZero = [...totalsByMonth.values()].filter((v) => v > 0);
