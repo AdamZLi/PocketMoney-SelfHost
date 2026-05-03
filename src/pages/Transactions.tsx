@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
+import { ArrowDown, ArrowUp } from "lucide-react";
 
 const Transactions = () => {
   const qc = useQueryClient();
@@ -15,6 +16,9 @@ const Transactions = () => {
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [showExcluded, setShowExcluded] = useState(false);
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
+  const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -26,17 +30,19 @@ const Transactions = () => {
   });
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, showExcluded }],
+    queryKey: ["txns", { search, accountId, categoryId, showExcluded, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
         .select("id,date,name,amount,status,excluded,note,category_id,account_id,categories(name,color),accounts(name,mask)")
-        .order("date", { ascending: false })
+        .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (!showExcluded) q = q.eq("excluded", false);
       if (search) q = q.ilike("name", `%${search}%`);
+      if (dateFrom) q = q.gte("date", dateFrom);
+      if (dateTo) q = q.lte("date", dateTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
@@ -96,6 +102,26 @@ const Transactions = () => {
               Show excluded
             </label>
           </div>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3 items-center">
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">From</label>
+              <Input type="date" value={dateFrom} onChange={e => setDateFrom(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <label className="text-xs text-muted-foreground">To</label>
+              <Input type="date" value={dateTo} onChange={e => setDateTo(e.target.value)} />
+            </div>
+            <div className="flex gap-2 md:col-span-2 md:justify-end pt-5">
+              {(dateFrom || dateTo) && (
+                <button
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                  onClick={() => { setDateFrom(""); setDateTo(""); }}
+                >
+                  Clear date range
+                </button>
+              )}
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -105,7 +131,15 @@ const Transactions = () => {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="px-4 py-3 w-28">Date</th>
+                  <th className="px-4 py-3 w-32">
+                    <button
+                      type="button"
+                      onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                    >
+                      Date {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                    </button>
+                  </th>
                   <th className="px-4 py-3">Merchant</th>
                   <th className="px-4 py-3">Account</th>
                   <th className="px-4 py-3">Category</th>
