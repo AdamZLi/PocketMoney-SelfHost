@@ -131,7 +131,15 @@ const Transactions = () => {
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground border-b">
                 <tr>
-                  <th className="px-4 py-3 w-28">Date</th>
+                  <th className="px-4 py-3 w-32">
+                    <button
+                      type="button"
+                      onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
+                      className="inline-flex items-center gap-1 hover:text-foreground"
+                    >
+                      Date {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+                    </button>
+                  </th>
                   <th className="px-4 py-3">Merchant</th>
                   <th className="px-4 py-3">Account</th>
                   <th className="px-4 py-3">Category</th>
