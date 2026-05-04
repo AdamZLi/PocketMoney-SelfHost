@@ -490,6 +490,19 @@ const Trends = () => {
                       />
                     );
                   })}
+                  {categoryBucket === "all" && (
+                    <Line
+                      type="monotone"
+                      dataKey="__total"
+                      name="Total"
+                      stroke="hsl(var(--foreground))"
+                      strokeWidth={1.5}
+                      strokeDasharray="3 4"
+                      dot={{ r: 2.5, fill: "hsl(var(--foreground))", strokeWidth: 0 }}
+                      activeDot={{ r: 4 }}
+                      isAnimationActive={false}
+                    />
+                  )}
                   {categoryBucket !== "all" && categories.map((c, i) => {
                     if (c !== categoryBucket) return null;
                     return (
