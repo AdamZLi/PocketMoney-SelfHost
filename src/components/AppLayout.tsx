@@ -62,7 +62,7 @@ export const AppLayout = () => {
           Single-user mode. Auth & bank sync coming in Phase 1.5.
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto h-screen">
         <Outlet />
       </main>
     </div>
