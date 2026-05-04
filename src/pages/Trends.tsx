@@ -416,7 +416,7 @@ const Trends = () => {
         />
         <Stat
           label="Monthly average"
-          value={fmtCurrency(avg)}
+          value={fmtCurrency(focusedAvg)}
           sub={nonZero.length ? `across ${nonZero.length} active months` : "no activity"}
         />
         <Stat
