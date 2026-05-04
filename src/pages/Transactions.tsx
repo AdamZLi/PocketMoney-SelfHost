@@ -862,15 +862,6 @@ const Transactions = () => {
           </Button>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`h-9 font-normal ${showExcluded ? "text-foreground" : "text-muted-foreground"}`}
-          onClick={() => setShowExcluded(v => !v)}
-        >
-          {showExcluded ? "Hide excluded" : "Show excluded"}
-        </Button>
-
         {activeFilterCount > 0 && (
           <Button
             variant="ghost"
