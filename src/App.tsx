@@ -11,6 +11,7 @@ import Accounts from "./pages/Accounts";
 import Categories from "./pages/Categories";
 import Aliases from "./pages/Aliases";
 import Trends from "./pages/Trends";
+import Review from "./pages/Review";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -30,6 +31,7 @@ const App = () => (
             <Route path="/categories" element={<Categories />} />
             <Route path="/aliases" element={<Aliases />} />
             <Route path="/trends" element={<Trends />} />
+            <Route path="/review" element={<Review />} />
           </Route>
           <Route path="*" element={<NotFound />} />
         </Routes>
