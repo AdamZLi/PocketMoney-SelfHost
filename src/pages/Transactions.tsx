@@ -37,6 +37,7 @@ const Transactions = () => {
   const [search, setSearch] = useState("");
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
+  const [treatment, setTreatment] = useState<string>("all");
   const [showExcluded, setShowExcluded] = useState(false);
   const [reviewOnly, setReviewOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -109,7 +110,7 @@ const Transactions = () => {
   }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, treatment, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
@@ -118,6 +119,7 @@ const Transactions = () => {
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
+      if (treatment !== "all") q = q.eq("treatment", treatment as any);
       if (!showExcluded) q = q.eq("excluded", false);
       if (reviewOnly) q = q.eq("needs_review", true);
       if (search) q = q.ilike("name", `%${search}%`);
@@ -507,6 +509,7 @@ const Transactions = () => {
   const activeFilterCount =
     (accountId !== "all" ? 1 : 0) +
     (categoryId !== "all" ? 1 : 0) +
+    (treatment !== "all" ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0) +
     (showExcluded ? 1 : 0);
 
@@ -832,6 +835,20 @@ const Transactions = () => {
           </SelectContent>
         </Select>
 
+        <Select value={treatment} onValueChange={setTreatment}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All treatments</SelectItem>
+            <SelectItem value="normal">Normal</SelectItem>
+            <SelectItem value="excluded">Excluded (one-off)</SelectItem>
+            <SelectItem value="refundable">Refundable</SelectItem>
+            <SelectItem value="reimbursable">Reimbursable / split</SelectItem>
+            <SelectItem value="amortized">Amortized</SelectItem>
+          </SelectContent>
+        </Select>
+
         {reviewCount > 0 && (
           <Button
             variant="ghost"
@@ -861,7 +878,7 @@ const Transactions = () => {
             variant="ghost"
             size="sm"
             className="h-9 text-muted-foreground"
-            onClick={() => { setAccountId("all"); setCategoryId("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
             Reset
