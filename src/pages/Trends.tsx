@@ -421,6 +421,10 @@ const Trends = () => {
                 : "Showing one category — others dimmed"}
             </p>
           </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <Switch checked={showRaw} onCheckedChange={setShowRaw} />
+            Show raw (one-off & full lump sums)
+          </label>
         </div>
 
         {isLoading ? (
