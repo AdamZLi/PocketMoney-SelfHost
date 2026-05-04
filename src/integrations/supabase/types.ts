@@ -304,15 +304,19 @@ export type Database = {
           excluded: boolean
           id: string
           import_batch_id: string | null
+          linked_txn_id: string | null
           name: string
           needs_review: boolean
           note: string | null
           plaid_transaction_id: string | null
           raw_row: Json | null
           recurring: string | null
+          review_kind: Database["public"]["Enums"]["review_kind"] | null
           review_reason: string | null
           source: Database["public"]["Enums"]["txn_source"]
           status: Database["public"]["Enums"]["txn_status"]
+          treatment: Database["public"]["Enums"]["txn_treatment"]
+          treatment_meta: Json
           type: string | null
           updated_at: string
         }
@@ -325,15 +329,19 @@ export type Database = {
           excluded?: boolean
           id?: string
           import_batch_id?: string | null
+          linked_txn_id?: string | null
           name: string
           needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
           raw_row?: Json | null
           recurring?: string | null
+          review_kind?: Database["public"]["Enums"]["review_kind"] | null
           review_reason?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
+          treatment?: Database["public"]["Enums"]["txn_treatment"]
+          treatment_meta?: Json
           type?: string | null
           updated_at?: string
         }
@@ -346,15 +354,19 @@ export type Database = {
           excluded?: boolean
           id?: string
           import_batch_id?: string | null
+          linked_txn_id?: string | null
           name?: string
           needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
           raw_row?: Json | null
           recurring?: string | null
+          review_kind?: Database["public"]["Enums"]["review_kind"] | null
           review_reason?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
+          treatment?: Database["public"]["Enums"]["txn_treatment"]
+          treatment_meta?: Json
           type?: string | null
           updated_at?: string
         }
@@ -380,6 +392,13 @@ export type Database = {
             referencedRelation: "import_batches"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "transactions_linked_txn_id_fkey"
+            columns: ["linked_txn_id"]
+            isOneToOne: false
+            referencedRelation: "transactions"
+            referencedColumns: ["id"]
+          },
         ]
       }
     }
@@ -399,10 +418,17 @@ export type Database = {
         | "other"
       alias_match_type: "contains" | "exact" | "regex"
       alias_source: "user" | "seed"
+      review_kind: "duplicate" | "refund_pending" | "reimbursement_pending"
       rule_match_type: "contains" | "equals" | "regex"
       rule_source: "seed" | "user" | "learned"
       txn_source: "manual" | "import" | "plaid"
       txn_status: "pending" | "posted"
+      txn_treatment:
+        | "normal"
+        | "excluded"
+        | "refundable"
+        | "reimbursable"
+        | "amortized"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -540,10 +566,18 @@ export const Constants = {
       ],
       alias_match_type: ["contains", "exact", "regex"],
       alias_source: ["user", "seed"],
+      review_kind: ["duplicate", "refund_pending", "reimbursement_pending"],
       rule_match_type: ["contains", "equals", "regex"],
       rule_source: ["seed", "user", "learned"],
       txn_source: ["manual", "import", "plaid"],
       txn_status: ["pending", "posted"],
+      txn_treatment: [
+        "normal",
+        "excluded",
+        "refundable",
+        "reimbursable",
+        "amortized",
+      ],
     },
   },
 } as const
