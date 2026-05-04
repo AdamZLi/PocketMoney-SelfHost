@@ -153,9 +153,12 @@ const Import = () => {
 
   async function handleFile(file: File) {
     setBusy(true);
+    setProgress({ stage: "Reading file", current: 0, total: 1, detail: file.name });
     try {
       setFilename(file.name);
+      setProgress({ stage: "Loading merchant aliases", current: 0, total: 1 });
       const merchantAliases = await loadAliases();
+      setProgress({ stage: "Parsing file", current: 0, total: 1, detail: file.name });
       const parsed = await parseFile(file, merchantAliases);
       const staged: Staged[] = [];
       for (let i = 0; i < parsed.length; i++) {
@@ -171,8 +174,14 @@ const Import = () => {
           if (r) { cat_id = r; by = "rule"; }
         }
         staged.push({ ...p, _row: i, _category_id: cat_id, _account_id: account_id, _categorized_by: by });
+        if (i % 10 === 0 || i === parsed.length - 1) {
+          setProgress({ stage: "Categorizing rows", current: i + 1, total: parsed.length });
+          // Yield to keep UI responsive
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
       setStaging(staged);
+      setProgress({ stage: "Detecting duplicates", current: 0, total: 1 });
       const dups = await detectDuplicates(staged);
       setDupGroups(dups);
       toast({
@@ -183,6 +192,7 @@ const Import = () => {
       toast({ title: "Parse failed", description: e.message, variant: "destructive" });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
