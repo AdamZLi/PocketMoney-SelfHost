@@ -382,7 +382,7 @@ const Import = () => {
                   Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Same merchant + amount on the same date. Compared across this import and existing transactions.
+                  Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
