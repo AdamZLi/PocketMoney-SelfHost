@@ -492,7 +492,7 @@ const Import = () => {
               </CardHeader>
               <CardContent className="space-y-3">
                 {dupGroups.map((g, gi) => (
-                  <DupGroupRow
+                  <MemoDupGroupRow
                     key={g.key}
                     group={g}
                     index={gi}
