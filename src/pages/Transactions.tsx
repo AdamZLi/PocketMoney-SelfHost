@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag, Check, CalendarCheck } from "lucide-react";
 import { applyRules, type Rule } from "@/lib/categorize";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -40,6 +40,8 @@ const Transactions = () => {
   const [treatment, setTreatment] = useState<string>("all");
   
   const [reviewOnly, setReviewOnly] = useState(false);
+  const [reviewedFilter, setReviewedFilter] = useState<"all" | "reviewed" | "not_reviewed">("all");
+  const [month, setMonth] = useState<string>("all"); // 'all' or 'YYYY-MM'
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
@@ -109,21 +111,36 @@ const Transactions = () => {
     return arr;
   }, [categoriesRaw, categoryUsage]);
 
+  // Compute effective date range, honoring month selection.
+  const monthRange = useMemo(() => {
+    if (month === "all") return null;
+    const [y, m] = month.split("-").map(Number);
+    const from = `${month}-01`;
+    const last = new Date(y, m, 0).getDate();
+    const to = `${month}-${String(last).padStart(2, "0")}`;
+    return { from, to };
+  }, [month]);
+
+  const effectiveFrom = monthRange?.from ?? dateFrom;
+  const effectiveTo = monthRange?.to ?? dateTo;
+
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, reviewedFilter, month, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (treatment !== "all") q = q.eq("treatment", treatment as any);
       if (reviewOnly) q = q.eq("needs_review", true);
+      if (reviewedFilter === "reviewed") q = q.eq("reviewed", true);
+      else if (reviewedFilter === "not_reviewed") q = q.eq("reviewed", false);
       if (search) q = q.ilike("name", `%${search}%`);
-      if (dateFrom) q = q.gte("date", dateFrom);
-      if (dateTo) q = q.lte("date", dateTo);
+      if (effectiveFrom) q = q.gte("date", effectiveFrom);
+      if (effectiveTo) q = q.lte("date", effectiveTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
@@ -141,6 +158,68 @@ const Transactions = () => {
       return count ?? 0;
     },
   });
+
+  // Per-month review summary: list of months with reviewed/total counts.
+  const { data: monthSummary = [] } = useQuery({
+    queryKey: ["txns", "month-review-summary"],
+    queryFn: async () => {
+      // Paginate to bypass 1000-row cap.
+      const PAGE = 1000;
+      const all: { date: string; reviewed: boolean }[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("date,reviewed")
+          .order("date", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = (data ?? []) as any[];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+      const map = new Map<string, { total: number; reviewed: number }>();
+      for (const r of all) {
+        const k = String(r.date).slice(0, 7);
+        const cur = map.get(k) ?? { total: 0, reviewed: 0 };
+        cur.total += 1;
+        if (r.reviewed) cur.reviewed += 1;
+        map.set(k, cur);
+      }
+      return [...map.entries()]
+        .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+        .map(([k, v]) => ({ month: k, total: v.total, reviewed: v.reviewed }));
+    },
+  });
+
+  async function toggleReviewed(id: string, next: boolean) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "month-review-summary"] });
+  }
+
+  async function markMonthReviewed(targetMonth: string, next: boolean) {
+    if (targetMonth === "all") return;
+    const [y, m] = targetMonth.split("-").map(Number);
+    const from = `${targetMonth}-01`;
+    const last = new Date(y, m, 0).getDate();
+    const to = `${targetMonth}-${String(last).padStart(2, "0")}`;
+    const { error, count } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any, { count: "exact" })
+      .gte("date", from)
+      .lte("date", to);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    toast({
+      title: next ? `Marked ${targetMonth} as reviewed` : `Cleared review on ${targetMonth}`,
+      description: `${count ?? 0} transaction${(count ?? 0) === 1 ? "" : "s"} updated.`,
+    });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "month-review-summary"] });
+  }
 
   const total = useMemo(
     () => (txns as any[]).filter(t => !t.excluded).reduce((s, t) => s + Number(t.amount), 0),
@@ -509,7 +588,24 @@ const Transactions = () => {
     (accountId !== "all" ? 1 : 0) +
     (categoryId !== "all" ? 1 : 0) +
     (treatment !== "all" ? 1 : 0) +
+    (reviewedFilter !== "all" ? 1 : 0) +
+    (month !== "all" ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0);
+
+  const monthLabel = (k: string) => {
+    const [y, m] = k.split("-");
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, {
+      month: "short",
+      year: "numeric",
+    });
+  };
+  const currentMonthSummary = month !== "all"
+    ? (monthSummary as any[]).find((s) => s.month === month)
+    : null;
+  const currentMonthAllReviewed =
+    !!currentMonthSummary &&
+    currentMonthSummary.total > 0 &&
+    currentMonthSummary.reviewed === currentMonthSummary.total;
 
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
@@ -847,6 +943,87 @@ const Transactions = () => {
           </SelectContent>
         </Select>
 
+        {/* Reviewed filter — sits next to category/treatment */}
+        <Select value={reviewedFilter} onValueChange={(v) => setReviewedFilter(v as any)}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All review states</SelectItem>
+            <SelectItem value="reviewed">Reviewed</SelectItem>
+            <SelectItem value="not_reviewed">Not reviewed</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Month selector with per-month review status */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-9 text-muted-foreground font-normal gap-1.5">
+              <CalendarCheck className="h-3.5 w-3.5" />
+              {month === "all" ? "All months" : monthLabel(month)}
+              {currentMonthAllReviewed && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 p-0">
+            <div className="px-3 py-2 border-b text-xs text-muted-foreground flex items-center justify-between">
+              <span>Filter by month</span>
+              <button
+                onClick={() => setMonth("all")}
+                className="text-xs hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <ScrollArea className="max-h-72">
+              <div className="py-1">
+                {(monthSummary as any[]).length === 0 && (
+                  <div className="px-3 py-6 text-xs text-muted-foreground text-center">No data yet.</div>
+                )}
+                {(monthSummary as any[]).map((s) => {
+                  const all = s.reviewed === s.total && s.total > 0;
+                  const some = s.reviewed > 0 && !all;
+                  const isActive = s.month === month;
+                  return (
+                    <button
+                      key={s.month}
+                      onClick={() => setMonth(s.month)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted/60 ${
+                        isActive ? "bg-muted/60" : ""
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {all ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : some ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                        )}
+                        {monthLabel(s.month)}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {s.reviewed}/{s.total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+
+        {month !== "all" && currentMonthSummary && (
+          <Button
+            variant={currentMonthAllReviewed ? "ghost" : "outline"}
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => markMonthReviewed(month, !currentMonthAllReviewed)}
+          >
+            <Check className="h-3.5 w-3.5" />
+            {currentMonthAllReviewed ? "Unmark month" : "Mark month reviewed"}
+          </Button>
+        )}
+
         {reviewCount > 0 && (
           <Button
             variant="ghost"
@@ -867,7 +1044,7 @@ const Transactions = () => {
             variant="ghost"
             size="sm"
             className="h-9 text-muted-foreground"
-            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); }}
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setReviewedFilter("all"); setMonth("all"); setDateFrom(""); setDateTo(""); }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
             Reset
@@ -877,7 +1054,7 @@ const Transactions = () => {
 
       {/* Table */}
       <div>
-        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
+        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
           <Checkbox
             checked={txns.length > 0 && selected.size === txns.length}
             onCheckedChange={(v) => toggleAll(!!v)}
@@ -892,6 +1069,7 @@ const Transactions = () => {
           <span>Merchant</span>
           <span>Category</span>
           <span>Treatment</span>
+          <span>Reviewed</span>
           <span className="text-right">Amount</span>
         </div>
 
@@ -901,7 +1079,7 @@ const Transactions = () => {
             return (
               <div
                 key={t.id}
-                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
+                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
                   isSelected ? "bg-muted/40" : "hover:bg-muted/20"
                 } ${t.excluded ? "opacity-50" : ""}`}
               >
@@ -936,6 +1114,30 @@ const Transactions = () => {
                   date={t.date}
                   onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2.5 gap-1.5 justify-start font-normal text-xs ${
+                    t.reviewed
+                      ? "text-emerald-700 hover:text-emerald-700"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                  title={t.reviewed && t.reviewed_at ? `Reviewed ${fmtDate(t.reviewed_at)}` : "Mark as reviewed"}
+                >
+                  {t.reviewed ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      Reviewed
+                    </>
+                  ) : (
+                    <>
+                      <span className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />
+                      Mark
+                    </>
+                  )}
+                </Button>
                 {(() => {
                   const raw = Number(t.amount);
                   const eff = effectiveMonthlyContribution(
