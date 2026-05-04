@@ -208,19 +208,29 @@ const Trends = () => {
   }, [rows, buckets, showRaw]);
 
   const grandTotal = [...totalsByMonth.values()].reduce((a, b) => a + b, 0);
-  const nonZero = [...totalsByMonth.values()].filter((v) => v > 0);
-  const avg = nonZero.length ? grandTotal / nonZero.length : 0;
   const lastTwo = [...totalsByMonth.values()].slice(-2);
   const mom =
     lastTwo.length === 2 && lastTwo[0] > 0
       ? ((lastTwo[1] - lastTwo[0]) / lastTwo[0]) * 100
       : null;
 
-  // Per-category total honoring filter (for single-category view)
-  const focusedTotal = useMemo(() => {
-    if (categoryBucket === "all") return grandTotal;
-    return chartData.reduce((s, r: any) => s + (Number(r[categoryBucket]) || 0), 0);
-  }, [categoryBucket, chartData, grandTotal]);
+  // Per-category total + monthly series honoring filter (for single-category view)
+  const { focusedTotal, focusedAvg } = useMemo(() => {
+    const series =
+      categoryBucket === "all"
+        ? [...totalsByMonth.values()]
+        : chartData.map((r: any) => Number(r[categoryBucket]) || 0);
+    const total = series.reduce((s, v) => s + v, 0);
+    const active = series.filter((v) => v > 0);
+    return {
+      focusedTotal: total,
+      focusedAvg: active.length ? total / active.length : 0,
+    };
+  }, [categoryBucket, chartData, totalsByMonth]);
+
+  const nonZero = categoryBucket === "all"
+    ? [...totalsByMonth.values()].filter((v) => v > 0)
+    : chartData.map((r: any) => Number(r[categoryBucket]) || 0).filter((v) => v > 0);
 
   const dateRangeLabel =
     dateFrom || dateTo
