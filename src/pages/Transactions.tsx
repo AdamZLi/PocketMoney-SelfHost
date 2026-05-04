@@ -38,7 +38,7 @@ const Transactions = () => {
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
   const [treatment, setTreatment] = useState<string>("all");
-  const [showExcluded, setShowExcluded] = useState(false);
+  
   const [reviewOnly, setReviewOnly] = useState(false);
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
@@ -110,7 +110,7 @@ const Transactions = () => {
   }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, treatment, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
@@ -120,7 +120,6 @@ const Transactions = () => {
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (treatment !== "all") q = q.eq("treatment", treatment as any);
-      if (!showExcluded) q = q.eq("excluded", false);
       if (reviewOnly) q = q.eq("needs_review", true);
       if (search) q = q.ilike("name", `%${search}%`);
       if (dateFrom) q = q.gte("date", dateFrom);
@@ -510,8 +509,7 @@ const Transactions = () => {
     (accountId !== "all" ? 1 : 0) +
     (categoryId !== "all" ? 1 : 0) +
     (treatment !== "all" ? 1 : 0) +
-    (dateFrom || dateTo ? 1 : 0) +
-    (showExcluded ? 1 : 0);
+    (dateFrom || dateTo ? 1 : 0);
 
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
@@ -864,21 +862,12 @@ const Transactions = () => {
           </Button>
         )}
 
-        <Button
-          variant="ghost"
-          size="sm"
-          className={`h-9 font-normal ${showExcluded ? "text-foreground" : "text-muted-foreground"}`}
-          onClick={() => setShowExcluded(v => !v)}
-        >
-          {showExcluded ? "Hide excluded" : "Show excluded"}
-        </Button>
-
         {activeFilterCount > 0 && (
           <Button
             variant="ghost"
             size="sm"
             className="h-9 text-muted-foreground"
-            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
             Reset
