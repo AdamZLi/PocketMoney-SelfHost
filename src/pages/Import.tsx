@@ -200,33 +200,44 @@ const Import = () => {
     const rowsToClassify = staging.filter(s => !s._category_id && !s._drop);
     if (rowsToClassify.length === 0) { toast({ title: "Nothing to classify" }); return; }
     setAiBusy(true);
+    setProgress({ stage: "AI categorizing", current: 0, total: rowsToClassify.length });
     try {
       const categoryNames = (categories as any[]).map(c => c.name);
-      const { data, error } = await supabase.functions.invoke("categorize-transactions", {
-        body: {
-          categories: categoryNames,
-          transactions: rowsToClassify.map(r => ({ row: r._row, name: r.name, amount: r.amount })),
-        },
-      });
-      if (error) throw error;
-      const results: Array<{ row: number; category: string; confidence: number }> = data?.results ?? [];
+      const CHUNK = 50;
       const next = [...staging];
-      for (const res of results) {
-        const idx = next.findIndex(s => s._row === res.row);
-        if (idx === -1) continue;
-        const cat = (categories as any[]).find(c => c.name.toLowerCase() === res.category?.toLowerCase());
-        if (cat) {
-          next[idx]._category_id = cat.id;
-          next[idx]._categorized_by = "ai";
-          next[idx]._confidence = res.confidence;
+      let done = 0;
+      let totalClassified = 0;
+      for (let i = 0; i < rowsToClassify.length; i += CHUNK) {
+        const chunk = rowsToClassify.slice(i, i + CHUNK);
+        const { data, error } = await supabase.functions.invoke("categorize-transactions", {
+          body: {
+            categories: categoryNames,
+            transactions: chunk.map(r => ({ row: r._row, name: r.name, amount: r.amount })),
+          },
+        });
+        if (error) throw error;
+        const results: Array<{ row: number; category: string; confidence: number }> = data?.results ?? [];
+        for (const res of results) {
+          const idx = next.findIndex(s => s._row === res.row);
+          if (idx === -1) continue;
+          const cat = (categories as any[]).find(c => c.name.toLowerCase() === res.category?.toLowerCase());
+          if (cat) {
+            next[idx]._category_id = cat.id;
+            next[idx]._categorized_by = "ai";
+            next[idx]._confidence = res.confidence;
+          }
         }
+        totalClassified += results.length;
+        done += chunk.length;
+        setProgress({ stage: "AI categorizing", current: done, total: rowsToClassify.length });
+        setStaging([...next]);
       }
-      setStaging(next);
-      toast({ title: `AI classified ${results.length} rows` });
+      toast({ title: `AI classified ${totalClassified} rows` });
     } catch (e: any) {
       toast({ title: "AI categorization failed", description: e.message, variant: "destructive" });
     } finally {
       setAiBusy(false);
+      setProgress(null);
     }
   }
 
