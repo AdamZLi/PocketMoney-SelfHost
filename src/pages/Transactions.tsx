@@ -588,7 +588,24 @@ const Transactions = () => {
     (accountId !== "all" ? 1 : 0) +
     (categoryId !== "all" ? 1 : 0) +
     (treatment !== "all" ? 1 : 0) +
+    (reviewedFilter !== "all" ? 1 : 0) +
+    (month !== "all" ? 1 : 0) +
     (dateFrom || dateTo ? 1 : 0);
+
+  const monthLabel = (k: string) => {
+    const [y, m] = k.split("-");
+    return new Date(Number(y), Number(m) - 1, 1).toLocaleDateString(undefined, {
+      month: "short",
+      year: "numeric",
+    });
+  };
+  const currentMonthSummary = month !== "all"
+    ? (monthSummary as any[]).find((s) => s.month === month)
+    : null;
+  const currentMonthAllReviewed =
+    !!currentMonthSummary &&
+    currentMonthSummary.total > 0 &&
+    currentMonthSummary.reviewed === currentMonthSummary.total;
 
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
