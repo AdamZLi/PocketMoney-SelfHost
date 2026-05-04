@@ -6,6 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { ChevronDown, Repeat, AlertCircle, CalendarClock, Users, EyeOff, Check } from "lucide-react";
 import { Treatment, TreatmentMeta, previewAmortization, treatmentLabel } from "@/lib/treatments";
+import { OwedByCombobox } from "@/components/OwedByCombobox";
 import { cn } from "@/lib/utils";
 
 type Props = {
@@ -163,12 +164,12 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
             </div>
             <div>
               <Label className="text-xs text-muted-foreground">Owed by (name)</Label>
-              <Input
-                value={draftMeta.owed_by ?? ""}
-                onChange={(e) => setDraftMeta({ ...draftMeta, owed_by: e.target.value })}
-                placeholder="Alex, work, etc."
-                className="h-8 mt-1"
-              />
+              <div className="mt-1">
+                <OwedByCombobox
+                  value={draftMeta.owed_by ?? ""}
+                  onChange={(v) => setDraftMeta({ ...draftMeta, owed_by: v })}
+                />
+              </div>
             </div>
           </div>
         )}
