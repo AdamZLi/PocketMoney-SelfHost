@@ -305,12 +305,21 @@ const Import = () => {
           .in("id", existingFlagIds);
       }
 
-      const { error: txErr, count } = await supabase.from("transactions").upsert(payload, {
-        onConflict: "date,name,amount,account_id,status",
-        ignoreDuplicates: true,
-        count: "exact",
-      } as any);
-      if (txErr) throw txErr;
+      const CHUNK = 200;
+      let totalCount = 0;
+      setProgress({ stage: "Importing transactions", current: 0, total: payload.length });
+      for (let i = 0; i < payload.length; i += CHUNK) {
+        const slice = payload.slice(i, i + CHUNK);
+        const { error: txErr, count } = await supabase.from("transactions").upsert(slice, {
+          onConflict: "date,name,amount,account_id,status",
+          ignoreDuplicates: true,
+          count: "exact",
+        } as any);
+        if (txErr) throw txErr;
+        totalCount += count ?? slice.length;
+        setProgress({ stage: "Importing transactions", current: Math.min(i + CHUNK, payload.length), total: payload.length });
+      }
+      const count = totalCount;
       await supabase.from("import_batches").update({ status: "done", imported_rows: count ?? rows.length }).eq("id", batch.id);
       const flaggedTotal = dupDirectives.flagRows.size + existingFlagIds.length;
       toast({
