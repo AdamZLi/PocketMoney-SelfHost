@@ -41,6 +41,90 @@ function dateKey(d: string, offset = 0) {
   return dt.toISOString().slice(0, 10);
 }
 
+type DupGroupRowProps = {
+  group: DupGroup;
+  index: number;
+  stagedById: Map<number, Staged>;
+  onSetAction: (idx: number, action: DupGroup["action"]) => void;
+  onSetKeep: (idx: number, keepIndex: number) => void;
+};
+
+const DupGroupRow = ({ group: g, index: gi, stagedById, onSetAction, onSetKeep }: DupGroupRowProps) => (
+  <div className="rounded-md border bg-background p-3 space-y-2">
+    <div className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="text-xs text-muted-foreground">
+        {g.members.length} matching transactions
+      </div>
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant={g.action === "keep_both" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "keep_both")}
+        >
+          <Check className="h-3 w-3" /> Keep all
+        </Button>
+        <Button
+          size="sm"
+          variant={g.action === "merge" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "merge")}
+        >
+          <Copy className="h-3 w-3" /> Merge all
+        </Button>
+        <Button
+          size="sm"
+          variant={g.action === "flag" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "flag")}
+        >
+          <Flag className="h-3 w-3" /> Flag
+        </Button>
+      </div>
+    </div>
+    <div className="divide-y">
+      {g.members.map((m, mi) => {
+        const isStaged = m.kind === "staged";
+        const date = isStaged ? stagedById.get(m.row)?.date ?? "" : m.date;
+        const name = isStaged ? stagedById.get(m.row)?.name ?? "" : m.name;
+        const amount = isStaged ? stagedById.get(m.row)?.amount ?? 0 : m.amount;
+        const isKept = g.action === "merge" && mi === g.keepIndex;
+        const willDrop = g.action === "merge" && !isKept && isStaged;
+        return (
+          <div key={mi} className={`flex items-center gap-3 py-2 text-sm ${willDrop ? "opacity-50" : ""}`}>
+            <div className="w-24 text-xs text-muted-foreground tabular-nums">{fmtDate(date)}</div>
+            <div className="flex-1 truncate">
+              {name}
+              <Badge variant="outline" className="ml-2 text-[10px]">
+                {isStaged ? "new" : "existing"}
+              </Badge>
+            </div>
+            <div className="tabular-nums w-24 text-right">{fmtCurrency(amount)}</div>
+            {g.action === "merge" && (
+              <Button
+                size="sm"
+                variant={isKept ? "secondary" : "ghost"}
+                className="h-7 text-xs"
+                onClick={() => onSetKeep(gi, mi)}
+              >
+                {isKept ? "Keep" : "Use this"}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const MemoDupGroupRow = React.memo(DupGroupRow, (prev, next) =>
+  prev.group === next.group &&
+  prev.index === next.index &&
+  prev.stagedById === next.stagedById &&
+  prev.onSetAction === next.onSetAction &&
+  prev.onSetKeep === next.onSetKeep
+);
+
 const Import = () => {
   const qc = useQueryClient();
   const [staging, setStaging] = useState<Staged[]>([]);
