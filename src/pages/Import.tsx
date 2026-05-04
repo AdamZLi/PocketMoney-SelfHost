@@ -136,6 +136,7 @@ const Import = () => {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
+  const [visibleDupGroups, setVisibleDupGroups] = useState(DUP_GROUP_BATCH_SIZE);
   const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
   const [visibleRows, setVisibleRows] = useState(200);
 
@@ -250,6 +251,7 @@ const Import = () => {
       setProgress({ stage: "Detecting duplicates", current: 0, total: 1 });
       const dups = await detectDuplicates(staged);
       setDupGroups(dups);
+      setVisibleDupGroups(DUP_GROUP_BATCH_SIZE);
       toast({
         title: `Parsed ${staged.length} rows from ${file.name}`,
         description: dups.length > 0 ? `Found ${dups.length} potential duplicate group${dups.length === 1 ? "" : "s"} to review.` : undefined,
@@ -392,7 +394,7 @@ const Import = () => {
         title: `Imported ${count ?? rows.length} of ${rows.length}`,
         description: flaggedTotal > 0 ? `${flaggedTotal} transaction${flaggedTotal === 1 ? "" : "s"} flagged for review.` : undefined,
       });
-      setStaging([]); setFilename(""); setDupGroups([]);
+      setStaging([]); setFilename(""); setDupGroups([]); setVisibleDupGroups(DUP_GROUP_BATCH_SIZE);
       qc.invalidateQueries();
     } catch (e: any) {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
@@ -413,6 +415,15 @@ const Import = () => {
   }, []);
 
   const stagedById = useMemo(() => new Map(staging.map(s => [s._row, s])), [staging]);
+  const dupActionSummary = useMemo<DupActionSummary>(() => {
+    return dupGroups.reduce(
+      (summary, group) => {
+        summary[group.action] += 1;
+        return summary;
+      },
+      { keep_both: 0, merge: 0, flag: 0 } as DupActionSummary,
+    );
+  }, [dupGroups]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
