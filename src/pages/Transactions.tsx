@@ -218,6 +218,7 @@ const Transactions = () => {
       description: `${count ?? 0} transaction${(count ?? 0) === 1 ? "" : "s"} updated.`,
     });
     qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "month-review-summary"] });
   }
 
   const total = useMemo(
