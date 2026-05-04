@@ -313,6 +313,8 @@ export type Database = {
           recurring: string | null
           review_kind: Database["public"]["Enums"]["review_kind"] | null
           review_reason: string | null
+          reviewed: boolean
+          reviewed_at: string | null
           source: Database["public"]["Enums"]["txn_source"]
           status: Database["public"]["Enums"]["txn_status"]
           treatment: Database["public"]["Enums"]["txn_treatment"]
@@ -338,6 +340,8 @@ export type Database = {
           recurring?: string | null
           review_kind?: Database["public"]["Enums"]["review_kind"] | null
           review_reason?: string | null
+          reviewed?: boolean
+          reviewed_at?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
           treatment?: Database["public"]["Enums"]["txn_treatment"]
@@ -363,6 +367,8 @@ export type Database = {
           recurring?: string | null
           review_kind?: Database["public"]["Enums"]["review_kind"] | null
           review_reason?: string | null
+          reviewed?: boolean
+          reviewed_at?: string | null
           source?: Database["public"]["Enums"]["txn_source"]
           status?: Database["public"]["Enums"]["txn_status"]
           treatment?: Database["public"]["Enums"]["txn_treatment"]
