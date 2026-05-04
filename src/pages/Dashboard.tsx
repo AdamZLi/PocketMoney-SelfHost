@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate, fmtMonthYear } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingDown, Wallet, Tag } from "lucide-react";
+import { effectiveMonthlyContribution } from "@/lib/treatments";
 
 const Dashboard = () => {
   const now = new Date();
