@@ -22,6 +22,8 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { TreatmentPicker } from "@/components/TreatmentPicker";
+import { effectiveMonthlyContribution, treatmentLabel, type Treatment, type TreatmentMeta } from "@/lib/treatments";
 
 type RuleSuggestion = {
   txnId: string;
