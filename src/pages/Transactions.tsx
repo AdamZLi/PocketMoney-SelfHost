@@ -198,6 +198,7 @@ const Transactions = () => {
       .eq("id", id);
     if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
     qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "month-review-summary"] });
   }
 
   async function markMonthReviewed(targetMonth: string, next: boolean) {
