@@ -895,7 +895,7 @@ const Transactions = () => {
             return (
               <div
                 key={t.id}
-                className={`group grid grid-cols-[24px_100px_1fr_180px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
+                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
                   isSelected ? "bg-muted/40" : "hover:bg-muted/20"
                 } ${t.excluded ? "opacity-50" : ""}`}
               >
@@ -923,9 +923,40 @@ const Transactions = () => {
                   categories={categories as any}
                   onChange={(v) => handleCategoryChange(t, v)}
                 />
-                <span className="text-sm text-right tabular-nums font-medium">
-                  {fmtCurrency(Number(t.amount))}
-                </span>
+                <TreatmentPicker
+                  treatment={(t.treatment ?? "normal") as Treatment}
+                  meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                  amount={Number(t.amount)}
+                  date={t.date}
+                  onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                />
+                {(() => {
+                  const raw = Number(t.amount);
+                  const eff = effectiveMonthlyContribution(
+                    {
+                      date: t.date,
+                      amount: raw,
+                      treatment: t.treatment,
+                      treatment_meta: t.treatment_meta,
+                      linked_txn_id: t.linked_txn_id,
+                      excluded: t.excluded,
+                    },
+                    t.date.slice(0, 7),
+                  );
+                  const muted = (t.treatment ?? "normal") !== "normal" && Math.abs(eff) !== Math.abs(raw);
+                  return (
+                    <div className="text-right">
+                      <div className={`text-sm tabular-nums font-medium ${muted ? "line-through text-muted-foreground" : ""}`}>
+                        {fmtCurrency(raw)}
+                      </div>
+                      {muted && (
+                        <div className="text-[10px] tabular-nums text-muted-foreground mt-0.5">
+                          eff {fmtCurrency(Math.sign(raw) * Math.abs(eff))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
