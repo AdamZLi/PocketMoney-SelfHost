@@ -547,7 +547,7 @@ const Import = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y">
-                    {staging.map(s => {
+                    {staging.slice(0, visibleRows).map(s => {
                       const willDrop = s._drop || dupDirectives.dropRows.has(s._row);
                       const willFlag = dupDirectives.flagRows.has(s._row);
                       return (
@@ -603,6 +603,22 @@ const Import = () => {
                     })}
                   </tbody>
                 </table>
+                {staging.length > visibleRows && (
+                  <div className="flex items-center justify-between gap-3 px-3 py-3 border-t bg-muted/30 text-xs text-muted-foreground">
+                    <span>
+                      Showing {visibleRows.toLocaleString()} of {staging.length.toLocaleString()} rows.
+                      All rows will be imported when you commit.
+                    </span>
+                    <div className="flex gap-2">
+                      <Button size="sm" variant="outline" onClick={() => setVisibleRows(v => v + 500)}>
+                        Show 500 more
+                      </Button>
+                      <Button size="sm" variant="ghost" onClick={() => setVisibleRows(staging.length)}>
+                        Show all
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </CardContent>
           </Card>
