@@ -878,7 +878,7 @@ const Transactions = () => {
             variant="ghost"
             size="sm"
             className="h-9 text-muted-foreground"
-            onClick={() => { setAccountId("all"); setCategoryId("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); setShowExcluded(false); }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
             Reset
