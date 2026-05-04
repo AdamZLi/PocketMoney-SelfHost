@@ -147,13 +147,34 @@ const Trends = () => {
     for (const m of buckets) totals.set(m, new Map());
 
     for (const r of rows) {
-      const amt = Number(r.amount);
-      if (!isFinite(amt) || amt <= 0) continue;
-      const k = monthKey(r.date);
-      if (!totals.has(k)) continue;
       const cat = bucketName(r);
-      totals.get(k)!.set(cat, (totals.get(k)!.get(cat) ?? 0) + amt);
-      catTotals.set(cat, (catTotals.get(cat) ?? 0) + amt);
+      // Each row contributes to potentially multiple months (amortization).
+      // The helper handles all treatments uniformly.
+      for (const mk of buckets) {
+        let v: number;
+        if (showRaw) {
+          if (monthKey(r.date) !== mk) continue;
+          const a = Number(r.amount);
+          if (!isFinite(a) || a <= 0) continue;
+          v = a;
+        } else {
+          const eff = effectiveMonthlyContribution(
+            {
+              date: r.date,
+              amount: Number(r.amount),
+              treatment: (r.treatment as any) ?? "normal",
+              treatment_meta: r.treatment_meta ?? {},
+              linked_txn_id: r.linked_txn_id,
+              excluded: r.excluded,
+            },
+            mk,
+          );
+          if (eff <= 0) continue;
+          v = eff;
+        }
+        totals.get(mk)!.set(cat, (totals.get(mk)!.get(cat) ?? 0) + v);
+        catTotals.set(cat, (catTotals.get(cat) ?? 0) + v);
+      }
     }
 
     const cats = [...catTotals.entries()]
@@ -175,7 +196,7 @@ const Trends = () => {
     });
 
     return { chartData: data, categories: cats, totalsByMonth };
-  }, [rows, buckets]);
+  }, [rows, buckets, showRaw]);
 
   const grandTotal = [...totalsByMonth.values()].reduce((a, b) => a + b, 0);
   const nonZero = [...totalsByMonth.values()].filter((v) => v > 0);
