@@ -56,6 +56,14 @@ export function effectiveMonthlyContribution(t: TxnLike, monthIso: string): numb
       return monthKey(t.date) === monthIso ? Math.abs(share) : 0;
     }
     case "amortized": {
+      const mode = meta.amort_mode ?? "calendar_year";
+      if (mode === "calendar_year") {
+        // Spread evenly across all 12 months of the transaction's calendar year
+        // (both backward and forward from the txn date).
+        const year = t.date.slice(0, 4);
+        if (monthIso.slice(0, 4) !== year) return 0;
+        return amt / 12;
+      }
       const months = Math.max(1, Math.floor(meta.months ?? 12));
       const start = (meta.start_date ?? t.date).slice(0, 7);
       const idx = monthsBetween(start, monthIso);
