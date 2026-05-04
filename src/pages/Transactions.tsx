@@ -1079,7 +1079,7 @@ const Transactions = () => {
             return (
               <div
                 key={t.id}
-                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
+                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
                   isSelected ? "bg-muted/40" : "hover:bg-muted/20"
                 } ${t.excluded ? "opacity-50" : ""}`}
               >
