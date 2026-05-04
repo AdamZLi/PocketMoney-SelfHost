@@ -50,6 +50,7 @@ const Import = () => {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
+  const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
