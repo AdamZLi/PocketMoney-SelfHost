@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import { toast } from "@/hooks/use-toast";
 import { Upload, FileText, Sparkles, Loader2, AlertTriangle, Check, Copy, Flag } from "lucide-react";
 import { fmtCurrency, fmtDate } from "@/lib/format";
@@ -49,6 +50,7 @@ const Import = () => {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
+  const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -151,9 +153,12 @@ const Import = () => {
 
   async function handleFile(file: File) {
     setBusy(true);
+    setProgress({ stage: "Reading file", current: 0, total: 1, detail: file.name });
     try {
       setFilename(file.name);
+      setProgress({ stage: "Loading merchant aliases", current: 0, total: 1 });
       const merchantAliases = await loadAliases();
+      setProgress({ stage: "Parsing file", current: 0, total: 1, detail: file.name });
       const parsed = await parseFile(file, merchantAliases);
       const staged: Staged[] = [];
       for (let i = 0; i < parsed.length; i++) {
@@ -169,8 +174,14 @@ const Import = () => {
           if (r) { cat_id = r; by = "rule"; }
         }
         staged.push({ ...p, _row: i, _category_id: cat_id, _account_id: account_id, _categorized_by: by });
+        if (i % 10 === 0 || i === parsed.length - 1) {
+          setProgress({ stage: "Categorizing rows", current: i + 1, total: parsed.length });
+          // Yield to keep UI responsive
+          await new Promise(r => setTimeout(r, 0));
+        }
       }
       setStaging(staged);
+      setProgress({ stage: "Detecting duplicates", current: 0, total: 1 });
       const dups = await detectDuplicates(staged);
       setDupGroups(dups);
       toast({
@@ -181,6 +192,7 @@ const Import = () => {
       toast({ title: "Parse failed", description: e.message, variant: "destructive" });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -188,33 +200,44 @@ const Import = () => {
     const rowsToClassify = staging.filter(s => !s._category_id && !s._drop);
     if (rowsToClassify.length === 0) { toast({ title: "Nothing to classify" }); return; }
     setAiBusy(true);
+    setProgress({ stage: "AI categorizing", current: 0, total: rowsToClassify.length });
     try {
       const categoryNames = (categories as any[]).map(c => c.name);
-      const { data, error } = await supabase.functions.invoke("categorize-transactions", {
-        body: {
-          categories: categoryNames,
-          transactions: rowsToClassify.map(r => ({ row: r._row, name: r.name, amount: r.amount })),
-        },
-      });
-      if (error) throw error;
-      const results: Array<{ row: number; category: string; confidence: number }> = data?.results ?? [];
+      const CHUNK = 50;
       const next = [...staging];
-      for (const res of results) {
-        const idx = next.findIndex(s => s._row === res.row);
-        if (idx === -1) continue;
-        const cat = (categories as any[]).find(c => c.name.toLowerCase() === res.category?.toLowerCase());
-        if (cat) {
-          next[idx]._category_id = cat.id;
-          next[idx]._categorized_by = "ai";
-          next[idx]._confidence = res.confidence;
+      let done = 0;
+      let totalClassified = 0;
+      for (let i = 0; i < rowsToClassify.length; i += CHUNK) {
+        const chunk = rowsToClassify.slice(i, i + CHUNK);
+        const { data, error } = await supabase.functions.invoke("categorize-transactions", {
+          body: {
+            categories: categoryNames,
+            transactions: chunk.map(r => ({ row: r._row, name: r.name, amount: r.amount })),
+          },
+        });
+        if (error) throw error;
+        const results: Array<{ row: number; category: string; confidence: number }> = data?.results ?? [];
+        for (const res of results) {
+          const idx = next.findIndex(s => s._row === res.row);
+          if (idx === -1) continue;
+          const cat = (categories as any[]).find(c => c.name.toLowerCase() === res.category?.toLowerCase());
+          if (cat) {
+            next[idx]._category_id = cat.id;
+            next[idx]._categorized_by = "ai";
+            next[idx]._confidence = res.confidence;
+          }
         }
+        totalClassified += results.length;
+        done += chunk.length;
+        setProgress({ stage: "AI categorizing", current: done, total: rowsToClassify.length });
+        setStaging([...next]);
       }
-      setStaging(next);
-      toast({ title: `AI classified ${results.length} rows` });
+      toast({ title: `AI classified ${totalClassified} rows` });
     } catch (e: any) {
       toast({ title: "AI categorization failed", description: e.message, variant: "destructive" });
     } finally {
       setAiBusy(false);
+      setProgress(null);
     }
   }
 
@@ -282,12 +305,21 @@ const Import = () => {
           .in("id", existingFlagIds);
       }
 
-      const { error: txErr, count } = await supabase.from("transactions").upsert(payload, {
-        onConflict: "date,name,amount,account_id,status",
-        ignoreDuplicates: true,
-        count: "exact",
-      } as any);
-      if (txErr) throw txErr;
+      const CHUNK = 200;
+      let totalCount = 0;
+      setProgress({ stage: "Importing transactions", current: 0, total: payload.length });
+      for (let i = 0; i < payload.length; i += CHUNK) {
+        const slice = payload.slice(i, i + CHUNK);
+        const { error: txErr, count } = await supabase.from("transactions").upsert(slice, {
+          onConflict: "date,name,amount,account_id,status",
+          ignoreDuplicates: true,
+          count: "exact",
+        } as any);
+        if (txErr) throw txErr;
+        totalCount += count ?? slice.length;
+        setProgress({ stage: "Importing transactions", current: Math.min(i + CHUNK, payload.length), total: payload.length });
+      }
+      const count = totalCount;
       await supabase.from("import_batches").update({ status: "done", imported_rows: count ?? rows.length }).eq("id", batch.id);
       const flaggedTotal = dupDirectives.flagRows.size + existingFlagIds.length;
       toast({
@@ -300,6 +332,7 @@ const Import = () => {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
@@ -318,6 +351,26 @@ const Import = () => {
         <h1 className="text-3xl font-semibold tracking-tight">Import</h1>
         <p className="text-sm text-muted-foreground mt-1">CSV and XLSX supported. PDF support is wired up via the AI parser.</p>
       </header>
+
+      {progress && (
+        <Card>
+          <CardContent className="py-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                {progress.stage}
+                {progress.detail && <span className="text-muted-foreground font-normal">· {progress.detail}</span>}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {progress.total > 1
+                  ? `${progress.current.toLocaleString()} / ${progress.total.toLocaleString()} (${Math.round((progress.current / progress.total) * 100)}%)`
+                  : "Working…"}
+              </div>
+            </div>
+            <Progress value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
 
       {staging.length === 0 ? (
         <Card>
