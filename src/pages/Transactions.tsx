@@ -1054,7 +1054,7 @@ const Transactions = () => {
 
       {/* Table */}
       <div>
-        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
+        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
           <Checkbox
             checked={txns.length > 0 && selected.size === txns.length}
             onCheckedChange={(v) => toggleAll(!!v)}
@@ -1069,6 +1069,7 @@ const Transactions = () => {
           <span>Merchant</span>
           <span>Category</span>
           <span>Treatment</span>
+          <span>Reviewed</span>
           <span className="text-right">Amount</span>
         </div>
 
