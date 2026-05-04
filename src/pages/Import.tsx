@@ -380,16 +380,46 @@ const Import = () => {
           {dupGroups.length > 0 && (
             <Card className="border-amber-500/40 bg-amber-500/5">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground max-w-2xl">
+                      Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Apply to all groups</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("keep_both")}>
+                        <Check className="h-3 w-3" /> Keep all
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("merge")}>
+                        <Copy className="h-3 w-3" /> Merge all
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("flag")}>
+                        <Flag className="h-3 w-3" /> Flag all
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {dupGroups.map((g, gi) => (
+                  <DupGroupRow
+                    key={g.key}
+                    group={g}
+                    index={gi}
+                    stagedById={stagedById}
+                    onSetAction={setGroupAction}
+                    onSetKeep={setGroupKeep}
+                  />
+                ))}
+              </CardContent>
+            </Card>
+          )}
                   <div key={g.key} className="rounded-md border bg-background p-3 space-y-2">
                     <div className="flex flex-wrap items-center gap-2 justify-between">
                       <div className="text-xs text-muted-foreground">
