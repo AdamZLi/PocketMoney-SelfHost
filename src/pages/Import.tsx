@@ -121,7 +121,7 @@ const Import = () => {
       const stagedCount = members.filter(m => m.kind === "staged").length;
       if (members.length >= 2 && stagedCount >= 1) {
         const keepIndex = members.findIndex(m => m.kind === "staged");
-        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "merge" });
+        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "keep_both" });
       }
     }
     return result;
