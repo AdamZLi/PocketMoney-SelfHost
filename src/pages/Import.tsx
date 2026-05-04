@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
@@ -40,6 +40,90 @@ function dateKey(d: string, offset = 0) {
   dt.setUTCDate(dt.getUTCDate() + offset);
   return dt.toISOString().slice(0, 10);
 }
+
+type DupGroupRowProps = {
+  group: DupGroup;
+  index: number;
+  stagedById: Map<number, Staged>;
+  onSetAction: (idx: number, action: DupGroup["action"]) => void;
+  onSetKeep: (idx: number, keepIndex: number) => void;
+};
+
+const DupGroupRow = ({ group: g, index: gi, stagedById, onSetAction, onSetKeep }: DupGroupRowProps) => (
+  <div className="rounded-md border bg-background p-3 space-y-2">
+    <div className="flex flex-wrap items-center gap-2 justify-between">
+      <div className="text-xs text-muted-foreground">
+        {g.members.length} matching transactions
+      </div>
+      <div className="flex gap-1">
+        <Button
+          size="sm"
+          variant={g.action === "keep_both" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "keep_both")}
+        >
+          <Check className="h-3 w-3" /> Keep all
+        </Button>
+        <Button
+          size="sm"
+          variant={g.action === "merge" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "merge")}
+        >
+          <Copy className="h-3 w-3" /> Merge all
+        </Button>
+        <Button
+          size="sm"
+          variant={g.action === "flag" ? "default" : "outline"}
+          className="h-7 gap-1.5"
+          onClick={() => onSetAction(gi, "flag")}
+        >
+          <Flag className="h-3 w-3" /> Flag
+        </Button>
+      </div>
+    </div>
+    <div className="divide-y">
+      {g.members.map((m, mi) => {
+        const isStaged = m.kind === "staged";
+        const date = isStaged ? stagedById.get(m.row)?.date ?? "" : m.date;
+        const name = isStaged ? stagedById.get(m.row)?.name ?? "" : m.name;
+        const amount = isStaged ? stagedById.get(m.row)?.amount ?? 0 : m.amount;
+        const isKept = g.action === "merge" && mi === g.keepIndex;
+        const willDrop = g.action === "merge" && !isKept && isStaged;
+        return (
+          <div key={mi} className={`flex items-center gap-3 py-2 text-sm ${willDrop ? "opacity-50" : ""}`}>
+            <div className="w-24 text-xs text-muted-foreground tabular-nums">{fmtDate(date)}</div>
+            <div className="flex-1 truncate">
+              {name}
+              <Badge variant="outline" className="ml-2 text-[10px]">
+                {isStaged ? "new" : "existing"}
+              </Badge>
+            </div>
+            <div className="tabular-nums w-24 text-right">{fmtCurrency(amount)}</div>
+            {g.action === "merge" && (
+              <Button
+                size="sm"
+                variant={isKept ? "secondary" : "ghost"}
+                className="h-7 text-xs"
+                onClick={() => onSetKeep(gi, mi)}
+              >
+                {isKept ? "Keep" : "Use this"}
+              </Button>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  </div>
+);
+
+const MemoDupGroupRow = React.memo(DupGroupRow, (prev, next) =>
+  prev.group === next.group &&
+  prev.index === next.index &&
+  prev.stagedById === next.stagedById &&
+  prev.onSetAction === next.onSetAction &&
+  prev.onSetKeep === next.onSetKeep
+);
 
 const Import = () => {
   const qc = useQueryClient();
@@ -312,12 +396,15 @@ const Import = () => {
     }
   }
 
-  function setGroupAction(idx: number, action: DupGroup["action"]) {
+  const setGroupAction = useCallback((idx: number, action: DupGroup["action"]) => {
     setDupGroups(prev => prev.map((g, i) => i === idx ? { ...g, action } : g));
-  }
-  function setGroupKeep(idx: number, keepIndex: number) {
+  }, []);
+  const setGroupKeep = useCallback((idx: number, keepIndex: number) => {
     setDupGroups(prev => prev.map((g, i) => i === idx ? { ...g, keepIndex } : g));
-  }
+  }, []);
+  const setAllGroupsAction = useCallback((action: DupGroup["action"]) => {
+    setDupGroups(prev => prev.map(g => ({ ...g, action })));
+  }, []);
 
   const stagedById = useMemo(() => new Map(staging.map(s => [s._row, s])), [staging]);
 
@@ -377,81 +464,42 @@ const Import = () => {
           {dupGroups.length > 0 && (
             <Card className="border-amber-500/40 bg-amber-500/5">
               <CardHeader className="pb-3">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <AlertTriangle className="h-4 w-4 text-amber-600" />
-                  Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
-                </CardTitle>
-                <p className="text-xs text-muted-foreground">
-                  Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
-                </p>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="space-y-1">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 text-amber-600" />
+                      Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
+                    </CardTitle>
+                    <p className="text-xs text-muted-foreground max-w-2xl">
+                      Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Apply to all groups</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("keep_both")}>
+                        <Check className="h-3 w-3" /> Keep all
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("merge")}>
+                        <Copy className="h-3 w-3" /> Merge all
+                      </Button>
+                      <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("flag")}>
+                        <Flag className="h-3 w-3" /> Flag all
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </CardHeader>
               <CardContent className="space-y-3">
                 {dupGroups.map((g, gi) => (
-                  <div key={g.key} className="rounded-md border bg-background p-3 space-y-2">
-                    <div className="flex flex-wrap items-center gap-2 justify-between">
-                      <div className="text-xs text-muted-foreground">
-                        {g.members.length} matching transactions
-                      </div>
-                      <div className="flex gap-1">
-                        <Button
-                          size="sm"
-                          variant={g.action === "keep_both" ? "default" : "outline"}
-                          className="h-7 gap-1.5"
-                          onClick={() => setGroupAction(gi, "keep_both")}
-                        >
-                          <Check className="h-3 w-3" /> Keep all
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={g.action === "merge" ? "default" : "outline"}
-                          className="h-7 gap-1.5"
-                          onClick={() => setGroupAction(gi, "merge")}
-                        >
-                          <Copy className="h-3 w-3" /> Merge all
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant={g.action === "flag" ? "default" : "outline"}
-                          className="h-7 gap-1.5"
-                          onClick={() => setGroupAction(gi, "flag")}
-                        >
-                          <Flag className="h-3 w-3" /> Flag
-                        </Button>
-                      </div>
-                    </div>
-                    <div className="divide-y">
-                      {g.members.map((m, mi) => {
-                        const isStaged = m.kind === "staged";
-                        const date = isStaged ? stagedById.get(m.row)?.date ?? "" : m.date;
-                        const name = isStaged ? stagedById.get(m.row)?.name ?? "" : m.name;
-                        const amount = isStaged ? stagedById.get(m.row)?.amount ?? 0 : m.amount;
-                        const isKept = g.action === "merge" && mi === g.keepIndex;
-                        const willDrop = g.action === "merge" && !isKept && isStaged;
-                        return (
-                          <div key={mi} className={`flex items-center gap-3 py-2 text-sm ${willDrop ? "opacity-50" : ""}`}>
-                            <div className="w-24 text-xs text-muted-foreground tabular-nums">{fmtDate(date)}</div>
-                            <div className="flex-1 truncate">
-                              {name}
-                              <Badge variant="outline" className="ml-2 text-[10px]">
-                                {isStaged ? "new" : "existing"}
-                              </Badge>
-                            </div>
-                            <div className="tabular-nums w-24 text-right">{fmtCurrency(amount)}</div>
-                            {g.action === "merge" && (
-                              <Button
-                                size="sm"
-                                variant={isKept ? "secondary" : "ghost"}
-                                className="h-7 text-xs"
-                                onClick={() => setGroupKeep(gi, mi)}
-                              >
-                                {isKept ? "Keep" : "Use this"}
-                              </Button>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
+                  <MemoDupGroupRow
+                    key={g.key}
+                    group={g}
+                    index={gi}
+                    stagedById={stagedById}
+                    onSetAction={setGroupAction}
+                    onSetKeep={setGroupKeep}
+                  />
                 ))}
               </CardContent>
             </Card>
