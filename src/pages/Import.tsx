@@ -395,19 +395,19 @@ const Import = () => {
                       <div className="flex gap-1">
                         <Button
                           size="sm"
-                          variant={g.action === "merge" ? "default" : "outline"}
-                          className="h-7 gap-1.5"
-                          onClick={() => setGroupAction(gi, "merge")}
-                        >
-                          <Copy className="h-3 w-3" /> Merge
-                        </Button>
-                        <Button
-                          size="sm"
                           variant={g.action === "keep_both" ? "default" : "outline"}
                           className="h-7 gap-1.5"
                           onClick={() => setGroupAction(gi, "keep_both")}
                         >
-                          <Check className="h-3 w-3" /> Keep both
+                          <Check className="h-3 w-3" /> Keep all
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={g.action === "merge" ? "default" : "outline"}
+                          className="h-7 gap-1.5"
+                          onClick={() => setGroupAction(gi, "merge")}
+                        >
+                          <Copy className="h-3 w-3" /> Merge all
                         </Button>
                         <Button
                           size="sm"
