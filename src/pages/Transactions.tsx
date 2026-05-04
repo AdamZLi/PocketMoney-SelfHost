@@ -155,7 +155,19 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
-  // When a single transaction's category changes via the inline dropdown,
+  async function updateTreatment(id: string, treatment: Treatment, meta: TreatmentMeta) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ treatment, treatment_meta: meta as any } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: "treatment", old_value: null, new_value: treatment,
+    });
+    toast({ title: treatment === "normal" ? "Treatment cleared" : `Set to ${treatment}` });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "review-count"] });
+  }
   // offer to create a rule that applies the same category to every other
   // transaction with the same merchant name.
   async function handleCategoryChange(t: any, newCatId: string | null) {
