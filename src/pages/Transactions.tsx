@@ -111,7 +111,7 @@ const Transactions = () => {
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
