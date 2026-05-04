@@ -943,6 +943,87 @@ const Transactions = () => {
           </SelectContent>
         </Select>
 
+        {/* Reviewed filter — sits next to category/treatment */}
+        <Select value={reviewedFilter} onValueChange={(v) => setReviewedFilter(v as any)}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All review states</SelectItem>
+            <SelectItem value="reviewed">Reviewed</SelectItem>
+            <SelectItem value="not_reviewed">Not reviewed</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Month selector with per-month review status */}
+        <Popover>
+          <PopoverTrigger asChild>
+            <Button variant="ghost" size="sm" className="h-9 text-muted-foreground font-normal gap-1.5">
+              <CalendarCheck className="h-3.5 w-3.5" />
+              {month === "all" ? "All months" : monthLabel(month)}
+              {currentMonthAllReviewed && <Check className="h-3.5 w-3.5 text-emerald-600" />}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="w-72 p-0">
+            <div className="px-3 py-2 border-b text-xs text-muted-foreground flex items-center justify-between">
+              <span>Filter by month</span>
+              <button
+                onClick={() => setMonth("all")}
+                className="text-xs hover:text-foreground"
+              >
+                Clear
+              </button>
+            </div>
+            <ScrollArea className="max-h-72">
+              <div className="py-1">
+                {(monthSummary as any[]).length === 0 && (
+                  <div className="px-3 py-6 text-xs text-muted-foreground text-center">No data yet.</div>
+                )}
+                {(monthSummary as any[]).map((s) => {
+                  const all = s.reviewed === s.total && s.total > 0;
+                  const some = s.reviewed > 0 && !all;
+                  const isActive = s.month === month;
+                  return (
+                    <button
+                      key={s.month}
+                      onClick={() => setMonth(s.month)}
+                      className={`w-full flex items-center justify-between gap-2 px-3 py-2 text-sm hover:bg-muted/60 ${
+                        isActive ? "bg-muted/60" : ""
+                      }`}
+                    >
+                      <span className="flex items-center gap-2">
+                        {all ? (
+                          <Check className="h-3.5 w-3.5 text-emerald-600" />
+                        ) : some ? (
+                          <span className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+                        ) : (
+                          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/30" />
+                        )}
+                        {monthLabel(s.month)}
+                      </span>
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {s.reviewed}/{s.total}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </PopoverContent>
+        </Popover>
+
+        {month !== "all" && currentMonthSummary && (
+          <Button
+            variant={currentMonthAllReviewed ? "ghost" : "outline"}
+            size="sm"
+            className="h-9 gap-1.5"
+            onClick={() => markMonthReviewed(month, !currentMonthAllReviewed)}
+          >
+            <Check className="h-3.5 w-3.5" />
+            {currentMonthAllReviewed ? "Unmark month" : "Mark month reviewed"}
+          </Button>
+        )}
+
         {reviewCount > 0 && (
           <Button
             variant="ghost"
@@ -963,7 +1044,7 @@ const Transactions = () => {
             variant="ghost"
             size="sm"
             className="h-9 text-muted-foreground"
-            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setDateFrom(""); setDateTo(""); }}
+            onClick={() => { setAccountId("all"); setCategoryId("all"); setTreatment("all"); setReviewedFilter("all"); setMonth("all"); setDateFrom(""); setDateTo(""); }}
           >
             <X className="h-3.5 w-3.5 mr-1" />
             Reset
