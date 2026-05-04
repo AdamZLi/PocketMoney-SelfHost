@@ -382,7 +382,7 @@ const Import = () => {
                   Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Same merchant + amount within ±{FUZZY_DAYS} day. Compared across this import and existing transactions.
+                  Same merchant + amount on the same date. Compared across this import and existing transactions.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
