@@ -495,20 +495,20 @@ const Import = () => {
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Apply to all groups</span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("keep_both")}>
-                        <Check className="h-3 w-3" /> Keep all
+                        <Check className="h-3 w-3" /> Keep all ({dupActionSummary.keep_both})
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("merge")}>
-                        <Copy className="h-3 w-3" /> Merge all
+                        <Copy className="h-3 w-3" /> Merge all ({dupActionSummary.merge})
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("flag")}>
-                        <Flag className="h-3 w-3" /> Flag all
+                        <Flag className="h-3 w-3" /> Flag all ({dupActionSummary.flag})
                       </Button>
                     </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {dupGroups.map((g, gi) => (
+                {dupGroups.slice(0, visibleDupGroups).map((g, gi) => (
                   <MemoDupGroupRow
                     key={g.key}
                     group={g}
@@ -518,6 +518,14 @@ const Import = () => {
                     onSetKeep={setGroupKeep}
                   />
                 ))}
+                {dupGroups.length > visibleDupGroups && (
+                  <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-3 text-xs text-muted-foreground">
+                    <span>Showing {visibleDupGroups.toLocaleString()} of {dupGroups.length.toLocaleString()} duplicate groups.</span>
+                    <Button size="sm" variant="outline" onClick={() => setVisibleDupGroups(v => Math.min(v + DUP_GROUP_BATCH_SIZE, dupGroups.length))}>
+                      Show more
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -545,7 +553,7 @@ const Import = () => {
                   AI categorize
                 </Button>
                 <Button onClick={commit} disabled={busy}>Commit import</Button>
-                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); setDupGroups([]); }}>Cancel</Button>
+                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); setDupGroups([]); setVisibleDupGroups(DUP_GROUP_BATCH_SIZE); }}>Cancel</Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
