@@ -40,6 +40,8 @@ const Transactions = () => {
   const [treatment, setTreatment] = useState<string>("all");
   
   const [reviewOnly, setReviewOnly] = useState(false);
+  const [reviewedFilter, setReviewedFilter] = useState<"all" | "reviewed" | "not_reviewed">("all");
+  const [month, setMonth] = useState<string>("all"); // 'all' or 'YYYY-MM'
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [sortDir, setSortDir] = useState<"desc" | "asc">("desc");
