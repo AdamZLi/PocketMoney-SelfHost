@@ -35,8 +35,6 @@ type DupGroup = {
   action: "merge" | "keep_both" | "flag";
 };
 
-const FUZZY_DAYS = 1;
-
 function dateKey(d: string, offset = 0) {
   const dt = new Date(d + "T00:00:00Z");
   dt.setUTCDate(dt.getUTCDate() + offset);
@@ -87,13 +85,13 @@ const Import = () => {
     return data.id;
   }
 
-  // Detect duplicate groups: same merchant (lowercased) + same amount + date within ±FUZZY_DAYS.
+  // Detect duplicate groups: same merchant (lowercased) + same amount + EXACT same date.
   // Compares staged rows against each other AND against existing DB transactions on the same account.
   async function detectDuplicates(staged: Staged[]) {
     if (staged.length === 0) return [];
     const dates = staged.map(s => s.date).sort();
-    const min = dateKey(dates[0], -FUZZY_DAYS);
-    const max = dateKey(dates[dates.length - 1], FUZZY_DAYS);
+    const min = dates[0];
+    const max = dates[dates.length - 1];
 
     const { data: existing } = await supabase
       .from("transactions")
@@ -101,51 +99,29 @@ const Import = () => {
       .gte("date", min)
       .lte("date", max);
 
-    // Bucket by (account_id, merchant lowered, amount)
+    // Bucket by (account_id, merchant lowered, amount, date) — exact date only.
     const groups = new Map<string, DupSource[]>();
-    const bucketKey = (acct: string | null, name: string, amount: number) =>
-      `${acct ?? ""}|${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}`;
+    const bucketKey = (acct: string | null, name: string, amount: number, date: string) =>
+      `${acct ?? ""}|${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}|${date}`;
 
     for (const s of staged) {
-      const k = bucketKey(s._account_id ?? null, s.name, s.amount);
+      const k = bucketKey(s._account_id ?? null, s.name, s.amount, s.date);
       if (!groups.has(k)) groups.set(k, []);
       groups.get(k)!.push({ kind: "staged", row: s._row });
     }
     for (const e of (existing ?? []) as any[]) {
-      const k = bucketKey(e.account_id ?? null, e.name, e.amount);
+      const k = bucketKey(e.account_id ?? null, e.name, e.amount, e.date);
       if (groups.has(k)) {
         groups.get(k)!.push({ kind: "existing", id: e.id, date: e.date, name: e.name, amount: e.amount });
       }
     }
 
-    const stagedById = new Map(staged.map(s => [s._row, s]));
     const result: DupGroup[] = [];
     for (const [k, members] of groups) {
-      // Filter to members that have at least one staged row and total ≥2 within ±FUZZY_DAYS
-      const dated = members.map(m => {
-        if (m.kind === "staged") return { m, date: stagedById.get(m.row)!.date };
-        return { m, date: m.date };
-      });
-      // Keep only members within fuzzy window of any other
-      const close: typeof dated = [];
-      for (let i = 0; i < dated.length; i++) {
-        for (let j = 0; j < dated.length; j++) {
-          if (i === j) continue;
-          const d1 = new Date(dated[i].date).getTime();
-          const d2 = new Date(dated[j].date).getTime();
-          const diffDays = Math.abs(d1 - d2) / 86400000;
-          if (diffDays <= FUZZY_DAYS) {
-            if (!close.includes(dated[i])) close.push(dated[i]);
-            break;
-          }
-        }
-      }
-      const stagedCount = close.filter(d => d.m.kind === "staged").length;
-      if (close.length >= 2 && stagedCount >= 1) {
-        const ms = close.map(d => d.m);
-        // Default keep index: prefer the first staged row
-        const keepIndex = ms.findIndex(m => m.kind === "staged");
-        result.push({ key: k, members: ms, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "merge" });
+      const stagedCount = members.filter(m => m.kind === "staged").length;
+      if (members.length >= 2 && stagedCount >= 1) {
+        const keepIndex = members.findIndex(m => m.kind === "staged");
+        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "merge" });
       }
     }
     return result;
@@ -406,7 +382,7 @@ const Import = () => {
                   Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Same merchant + amount within ±{FUZZY_DAYS} day. Compared across this import and existing transactions.
+                  Same merchant + amount on the same date. Compared across this import and existing transactions.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
