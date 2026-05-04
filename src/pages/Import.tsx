@@ -242,6 +242,7 @@ const Import = () => {
         }
       }
       setStaging(staged);
+      setVisibleRows(200);
       setProgress({ stage: "Detecting duplicates", current: 0, total: 1 });
       const dups = await detectDuplicates(staged);
       setDupGroups(dups);
