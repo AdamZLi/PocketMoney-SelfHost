@@ -104,16 +104,25 @@ const Trends = () => {
       const lookback = new Date(range.from);
       lookback.setMonth(lookback.getMonth() - 24);
       const fetchFrom = lookback.toISOString().slice(0, 10);
-      let q = supabase
-        .from("transactions")
-        .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
-        .gte("date", fetchFrom)
-        .lte("date", range.to)
-        .order("date", { ascending: true });
-      if (accountId !== "all") q = q.eq("account_id", accountId);
-      const { data, error } = await q;
-      if (error) throw error;
-      return (data ?? []) as unknown as Row[];
+      // Paginate to bypass Supabase's default 1000-row cap.
+      const PAGE = 1000;
+      const all: Row[] = [];
+      for (let from = 0; ; from += PAGE) {
+        let q = supabase
+          .from("transactions")
+          .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+          .gte("date", fetchFrom)
+          .lte("date", range.to)
+          .order("date", { ascending: true })
+          .range(from, from + PAGE - 1);
+        if (accountId !== "all") q = q.eq("account_id", accountId);
+        const { data, error } = await q;
+        if (error) throw error;
+        const batch = (data ?? []) as unknown as Row[];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+      return all;
     },
   });
 
