@@ -9,6 +9,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Calendar, X, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { effectiveMonthlyContribution } from "@/lib/treatments";
 import {
   ResponsiveContainer,
   ComposedChart,
