@@ -22,6 +22,8 @@ import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { TreatmentPicker } from "@/components/TreatmentPicker";
+import { effectiveMonthlyContribution, treatmentLabel, type Treatment, type TreatmentMeta } from "@/lib/treatments";
 
 type RuleSuggestion = {
   txnId: string;
@@ -111,7 +113,7 @@ const Transactions = () => {
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
@@ -153,7 +155,19 @@ const Transactions = () => {
     qc.invalidateQueries({ queryKey: ["txns"] }); qc.invalidateQueries({ queryKey: ["categories", "usage"] });
   }
 
-  // When a single transaction's category changes via the inline dropdown,
+  async function updateTreatment(id: string, treatment: Treatment, meta: TreatmentMeta) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ treatment, treatment_meta: meta as any } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: "treatment", old_value: null, new_value: treatment,
+    });
+    toast({ title: treatment === "normal" ? "Treatment cleared" : `Set to ${treatment}` });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+    qc.invalidateQueries({ queryKey: ["txns", "review-count"] });
+  }
   // offer to create a rule that applies the same category to every other
   // transaction with the same merchant name.
   async function handleCategoryChange(t: any, newCatId: string | null) {
@@ -857,7 +871,7 @@ const Transactions = () => {
 
       {/* Table */}
       <div>
-        <div className="grid grid-cols-[24px_100px_1fr_180px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
+        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
           <Checkbox
             checked={txns.length > 0 && selected.size === txns.length}
             onCheckedChange={(v) => toggleAll(!!v)}
@@ -871,6 +885,7 @@ const Transactions = () => {
           </button>
           <span>Merchant</span>
           <span>Category</span>
+          <span>Treatment</span>
           <span className="text-right">Amount</span>
         </div>
 
@@ -880,7 +895,7 @@ const Transactions = () => {
             return (
               <div
                 key={t.id}
-                className={`group grid grid-cols-[24px_100px_1fr_180px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
+                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
                   isSelected ? "bg-muted/40" : "hover:bg-muted/20"
                 } ${t.excluded ? "opacity-50" : ""}`}
               >
@@ -908,9 +923,40 @@ const Transactions = () => {
                   categories={categories as any}
                   onChange={(v) => handleCategoryChange(t, v)}
                 />
-                <span className="text-sm text-right tabular-nums font-medium">
-                  {fmtCurrency(Number(t.amount))}
-                </span>
+                <TreatmentPicker
+                  treatment={(t.treatment ?? "normal") as Treatment}
+                  meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                  amount={Number(t.amount)}
+                  date={t.date}
+                  onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                />
+                {(() => {
+                  const raw = Number(t.amount);
+                  const eff = effectiveMonthlyContribution(
+                    {
+                      date: t.date,
+                      amount: raw,
+                      treatment: t.treatment,
+                      treatment_meta: t.treatment_meta,
+                      linked_txn_id: t.linked_txn_id,
+                      excluded: t.excluded,
+                    },
+                    t.date.slice(0, 7),
+                  );
+                  const muted = (t.treatment ?? "normal") !== "normal" && Math.abs(eff) !== Math.abs(raw);
+                  return (
+                    <div className="text-right">
+                      <div className={`text-sm tabular-nums font-medium ${muted ? "line-through text-muted-foreground" : ""}`}>
+                        {fmtCurrency(raw)}
+                      </div>
+                      {muted && (
+                        <div className="text-[10px] tabular-nums text-muted-foreground mt-0.5">
+                          eff {fmtCurrency(Math.sign(raw) * Math.abs(eff))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}

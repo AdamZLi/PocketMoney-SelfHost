@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate, fmtMonthYear } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingDown, Wallet, Tag } from "lucide-react";
+import { effectiveMonthlyContribution } from "@/lib/treatments";
 
 const Dashboard = () => {
   const now = new Date();
@@ -11,11 +12,12 @@ const Dashboard = () => {
   const { data: txns = [] } = useQuery({
     queryKey: ["txns", "month", monthStart],
     queryFn: async () => {
+      // Look back 24 months to capture amortized purchases that contribute to this month.
+      const lookback = new Date(now.getFullYear(), now.getMonth() - 24, 1).toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,name,amount,excluded,category_id,categories(name,parent_category,color)")
-        .gte("date", monthStart)
-        .eq("excluded", false)
+        .select("id,date,name,amount,excluded,treatment,treatment_meta,linked_txn_id,category_id,categories(name,parent_category,color)")
+        .gte("date", lookback)
         .order("date", { ascending: false });
       if (error) throw error;
       return data ?? [];
@@ -35,11 +37,25 @@ const Dashboard = () => {
     },
   });
 
-  const total = txns.reduce((s, t: any) => s + Number(t.amount), 0);
+  const monthIso = monthStart.slice(0, 7);
+  let total = 0;
   const byParent = new Map<string, number>();
   for (const t of txns as any[]) {
+    const eff = effectiveMonthlyContribution(
+      {
+        date: t.date,
+        amount: Number(t.amount),
+        treatment: t.treatment,
+        treatment_meta: t.treatment_meta,
+        linked_txn_id: t.linked_txn_id,
+        excluded: t.excluded,
+      },
+      monthIso,
+    );
+    if (eff <= 0) continue;
+    total += eff;
     const p = t.categories?.parent_category ?? t.categories?.name ?? "Uncategorized";
-    byParent.set(p, (byParent.get(p) ?? 0) + Number(t.amount));
+    byParent.set(p, (byParent.get(p) ?? 0) + eff);
   }
   const parentList = [...byParent.entries()].sort((a, b) => b[1] - a[1]);
   const maxParent = parentList[0]?.[1] ?? 1;

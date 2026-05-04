@@ -9,6 +9,8 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Calendar, X, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { effectiveMonthlyContribution } from "@/lib/treatments";
 import {
   ResponsiveContainer,
   ComposedChart,
@@ -43,6 +45,9 @@ type Row = {
   excluded: boolean;
   account_id: string | null;
   category_id: string | null;
+  treatment: string | null;
+  treatment_meta: any;
+  linked_txn_id: string | null;
   categories: { name: string | null; parent_category: string | null } | null;
 };
 
@@ -69,6 +74,7 @@ const Trends = () => {
   const [categoryBucket, setCategoryBucket] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [showRaw, setShowRaw] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -91,14 +97,18 @@ const Trends = () => {
   }, [months, dateFrom, dateTo]);
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["trends", "monthly", range.from, range.to, accountId],
+    queryKey: ["trends", "monthly", range.from, range.to, accountId, showRaw],
     queryFn: async () => {
+      // For amortized purchases, we may need data older than the visible range
+      // (a flight purchased 6 months ago that amortizes into this month).
+      const lookback = new Date(range.from);
+      lookback.setMonth(lookback.getMonth() - 24);
+      const fetchFrom = lookback.toISOString().slice(0, 10);
       let q = supabase
         .from("transactions")
-        .select("date,amount,excluded,account_id,category_id,categories(name,parent_category)")
-        .gte("date", range.from)
+        .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+        .gte("date", fetchFrom)
         .lte("date", range.to)
-        .eq("excluded", false)
         .order("date", { ascending: true });
       if (accountId !== "all") q = q.eq("account_id", accountId);
       const { data, error } = await q;
@@ -137,13 +147,34 @@ const Trends = () => {
     for (const m of buckets) totals.set(m, new Map());
 
     for (const r of rows) {
-      const amt = Number(r.amount);
-      if (!isFinite(amt) || amt <= 0) continue;
-      const k = monthKey(r.date);
-      if (!totals.has(k)) continue;
       const cat = bucketName(r);
-      totals.get(k)!.set(cat, (totals.get(k)!.get(cat) ?? 0) + amt);
-      catTotals.set(cat, (catTotals.get(cat) ?? 0) + amt);
+      // Each row contributes to potentially multiple months (amortization).
+      // The helper handles all treatments uniformly.
+      for (const mk of buckets) {
+        let v: number;
+        if (showRaw) {
+          if (monthKey(r.date) !== mk) continue;
+          const a = Number(r.amount);
+          if (!isFinite(a) || a <= 0) continue;
+          v = a;
+        } else {
+          const eff = effectiveMonthlyContribution(
+            {
+              date: r.date,
+              amount: Number(r.amount),
+              treatment: (r.treatment as any) ?? "normal",
+              treatment_meta: r.treatment_meta ?? {},
+              linked_txn_id: r.linked_txn_id,
+              excluded: r.excluded,
+            },
+            mk,
+          );
+          if (eff <= 0) continue;
+          v = eff;
+        }
+        totals.get(mk)!.set(cat, (totals.get(mk)!.get(cat) ?? 0) + v);
+        catTotals.set(cat, (catTotals.get(cat) ?? 0) + v);
+      }
     }
 
     const cats = [...catTotals.entries()]
@@ -165,7 +196,7 @@ const Trends = () => {
     });
 
     return { chartData: data, categories: cats, totalsByMonth };
-  }, [rows, buckets]);
+  }, [rows, buckets, showRaw]);
 
   const grandTotal = [...totalsByMonth.values()].reduce((a, b) => a + b, 0);
   const nonZero = [...totalsByMonth.values()].filter((v) => v > 0);
@@ -390,6 +421,10 @@ const Trends = () => {
                 : "Showing one category — others dimmed"}
             </p>
           </div>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground cursor-pointer">
+            <Switch checked={showRaw} onCheckedChange={setShowRaw} />
+            Show raw (one-off & full lump sums)
+          </label>
         </div>
 
         {isLoading ? (
