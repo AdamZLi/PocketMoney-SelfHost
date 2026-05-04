@@ -133,6 +133,7 @@ const Import = () => {
   const [aiBusy, setAiBusy] = useState(false);
   const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
   const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
+  const [visibleRows, setVisibleRows] = useState(200);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
