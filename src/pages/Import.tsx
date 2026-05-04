@@ -14,6 +14,8 @@ import { toast } from "@/hooks/use-toast";
 import { Upload, FileText, Sparkles, Loader2, AlertTriangle, Check, Copy, Flag } from "lucide-react";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 
+const DUP_GROUP_BATCH_SIZE = 50;
+
 type Staged = ParsedTxn & {
   _row: number;
   _category_id: string | null;
@@ -48,6 +50,8 @@ type DupGroupRowProps = {
   onSetAction: (idx: number, action: DupGroup["action"]) => void;
   onSetKeep: (idx: number, keepIndex: number) => void;
 };
+
+type DupActionSummary = Record<DupGroup["action"], number>;
 
 const DupGroupRow = ({ group: g, index: gi, stagedById, onSetAction, onSetKeep }: DupGroupRowProps) => (
   <div className="rounded-md border bg-background p-3 space-y-2">
