@@ -74,6 +74,7 @@ const Trends = () => {
   const [categoryBucket, setCategoryBucket] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
+  const [showRaw, setShowRaw] = useState(false);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
