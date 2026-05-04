@@ -14,6 +14,7 @@ export type TreatmentMeta = {
   // amortized
   months?: number;
   start_date?: string;
+  amort_mode?: "calendar_year" | "custom";
   // excluded
   reason?: string;
   // refund pair (set on the original charge when linked)
