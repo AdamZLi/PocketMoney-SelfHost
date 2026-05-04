@@ -54,8 +54,15 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
       cleanMeta.owed_by = draftMeta.owed_by || "";
       cleanMeta.reimbursement_status = draftMeta.reimbursement_status ?? "pending";
     } else if (draft === "amortized") {
-      cleanMeta.months = Math.max(1, Math.floor(draftMeta.months ?? 12));
-      cleanMeta.start_date = (draftMeta.start_date || date).slice(0, 7);
+      const mode = draftMeta.amort_mode ?? "calendar_year";
+      cleanMeta.amort_mode = mode;
+      if (mode === "calendar_year") {
+        cleanMeta.months = 12;
+        cleanMeta.start_date = `${date.slice(0, 4)}-01`;
+      } else {
+        cleanMeta.months = Math.max(1, Math.floor(draftMeta.months ?? 12));
+        cleanMeta.start_date = (draftMeta.start_date || date).slice(0, 7);
+      }
     } else if (draft === "excluded") {
       if (draftMeta.reason) cleanMeta.reason = draftMeta.reason;
     }
