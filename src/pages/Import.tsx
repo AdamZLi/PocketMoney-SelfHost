@@ -318,6 +318,9 @@ const Import = () => {
   function setGroupKeep(idx: number, keepIndex: number) {
     setDupGroups(prev => prev.map((g, i) => i === idx ? { ...g, keepIndex } : g));
   }
+  function setAllGroupsAction(action: DupGroup["action"]) {
+    setDupGroups(prev => prev.map(g => ({ ...g, action })));
+  }
 
   const stagedById = useMemo(() => new Map(staging.map(s => [s._row, s])), [staging]);
 
