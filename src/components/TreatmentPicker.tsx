@@ -54,8 +54,15 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
       cleanMeta.owed_by = draftMeta.owed_by || "";
       cleanMeta.reimbursement_status = draftMeta.reimbursement_status ?? "pending";
     } else if (draft === "amortized") {
-      cleanMeta.months = Math.max(1, Math.floor(draftMeta.months ?? 12));
-      cleanMeta.start_date = (draftMeta.start_date || date).slice(0, 7);
+      const mode = draftMeta.amort_mode ?? "calendar_year";
+      cleanMeta.amort_mode = mode;
+      if (mode === "calendar_year") {
+        cleanMeta.months = 12;
+        cleanMeta.start_date = `${date.slice(0, 4)}-01`;
+      } else {
+        cleanMeta.months = Math.max(1, Math.floor(draftMeta.months ?? 12));
+        cleanMeta.start_date = (draftMeta.start_date || date).slice(0, 7);
+      }
     } else if (draft === "excluded") {
       if (draftMeta.reason) cleanMeta.reason = draftMeta.reason;
     }
@@ -166,43 +173,79 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           </div>
         )}
 
-        {draft === "amortized" && (
-          <div className="space-y-2 border-t pt-3">
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs text-muted-foreground">Months</Label>
-                <Input
-                  type="number"
-                  min={1}
-                  value={draftMeta.months ?? 12}
-                  onChange={(e) => setDraftMeta({ ...draftMeta, months: parseInt(e.target.value) || 12 })}
-                  className="h-8 mt-1"
-                />
+        {draft === "amortized" && (() => {
+          const mode = draftMeta.amort_mode ?? "calendar_year";
+          const year = date.slice(0, 4);
+          return (
+            <div className="space-y-2 border-t pt-3">
+              <div className="flex gap-1 rounded-md bg-muted/40 p-0.5">
+                <button
+                  type="button"
+                  onClick={() => setDraftMeta({ ...draftMeta, amort_mode: "calendar_year" })}
+                  className={cn(
+                    "flex-1 text-xs py-1 rounded",
+                    mode === "calendar_year" ? "bg-background shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  Calendar year ({year})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDraftMeta({ ...draftMeta, amort_mode: "custom" })}
+                  className={cn(
+                    "flex-1 text-xs py-1 rounded",
+                    mode === "custom" ? "bg-background shadow-sm" : "text-muted-foreground",
+                  )}
+                >
+                  Custom
+                </button>
               </div>
-              <div>
-                <Label className="text-xs text-muted-foreground">Start month</Label>
-                <Input
-                  type="month"
-                  value={(draftMeta.start_date ?? date).slice(0, 7)}
-                  onChange={(e) => setDraftMeta({ ...draftMeta, start_date: e.target.value })}
-                  className="h-8 mt-1"
-                />
-              </div>
-            </div>
-            {(() => {
-              const p = previewAmortization(
-                amount,
-                draftMeta.months ?? 12,
-                (draftMeta.start_date ?? date).slice(0, 7),
-              );
-              return (
+
+              {mode === "calendar_year" ? (
                 <p className="text-[11px] text-muted-foreground">
-                  ≈ ${p.per.toFixed(2)}/mo · {p.start} → {p.end}
+                  Spreads ${Math.abs(amount).toFixed(2)} evenly across Jan–Dec {year}
+                  {" "}(≈ ${(Math.abs(amount) / 12).toFixed(2)}/mo, both backward and forward).
                 </p>
-              );
-            })()}
-          </div>
-        )}
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Months</Label>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={draftMeta.months ?? 12}
+                        onChange={(e) => setDraftMeta({ ...draftMeta, months: parseInt(e.target.value) || 12 })}
+                        className="h-8 mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Start month</Label>
+                      <Input
+                        type="month"
+                        value={(draftMeta.start_date ?? date).slice(0, 7)}
+                        onChange={(e) => setDraftMeta({ ...draftMeta, start_date: e.target.value })}
+                        className="h-8 mt-1"
+                      />
+                    </div>
+                  </div>
+                  {(() => {
+                    const p = previewAmortization(
+                      amount,
+                      draftMeta.months ?? 12,
+                      (draftMeta.start_date ?? date).slice(0, 7),
+                    );
+                    return (
+                      <p className="text-[11px] text-muted-foreground">
+                        ≈ ${p.per.toFixed(2)}/mo · {p.start} → {p.end}
+                      </p>
+                    );
+                  })()}
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {draft === "excluded" && (
           <div className="space-y-2 border-t pt-3">

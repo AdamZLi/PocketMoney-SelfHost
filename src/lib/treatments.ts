@@ -14,6 +14,7 @@ export type TreatmentMeta = {
   // amortized
   months?: number;
   start_date?: string;
+  amort_mode?: "calendar_year" | "custom";
   // excluded
   reason?: string;
   // refund pair (set on the original charge when linked)
@@ -55,6 +56,14 @@ export function effectiveMonthlyContribution(t: TxnLike, monthIso: string): numb
       return monthKey(t.date) === monthIso ? Math.abs(share) : 0;
     }
     case "amortized": {
+      const mode = meta.amort_mode ?? "calendar_year";
+      if (mode === "calendar_year") {
+        // Spread evenly across all 12 months of the transaction's calendar year
+        // (both backward and forward from the txn date).
+        const year = t.date.slice(0, 4);
+        if (monthIso.slice(0, 4) !== year) return 0;
+        return amt / 12;
+      }
       const months = Math.max(1, Math.floor(meta.months ?? 12));
       const start = (meta.start_date ?? t.date).slice(0, 7);
       const idx = monthsBetween(start, monthIso);
@@ -96,8 +105,12 @@ export function treatmentLabel(t: TxnLike): string | null {
       const share = typeof meta.your_share === "number" ? meta.your_share : Math.abs(Number(t.amount) || 0);
       return `Split · ${formatMoney(share)} of ${formatMoney(Math.abs(Number(t.amount) || 0))}`;
     }
-    case "amortized":
+    case "amortized": {
+      if ((meta.amort_mode ?? "calendar_year") === "calendar_year") {
+        return `Amortized · ${t.date.slice(0, 4)} (Jan–Dec)`;
+      }
       return `Amortized · ${meta.months ?? 12} mo`;
+    }
     default:
       return null;
   }
