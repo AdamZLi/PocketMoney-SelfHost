@@ -1114,6 +1114,30 @@ const Transactions = () => {
                   date={t.date}
                   onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
                 />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className={`h-7 px-2.5 gap-1.5 justify-start font-normal text-xs ${
+                    t.reviewed
+                      ? "text-emerald-700 hover:text-emerald-700"
+                      : "text-muted-foreground"
+                  }`}
+                  onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                  title={t.reviewed && t.reviewed_at ? `Reviewed ${fmtDate(t.reviewed_at)}` : "Mark as reviewed"}
+                >
+                  {t.reviewed ? (
+                    <>
+                      <Check className="h-3.5 w-3.5" />
+                      Reviewed
+                    </>
+                  ) : (
+                    <>
+                      <span className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />
+                      Mark
+                    </>
+                  )}
+                </Button>
                 {(() => {
                   const raw = Number(t.amount);
                   const eff = effectiveMonthlyContribution(
