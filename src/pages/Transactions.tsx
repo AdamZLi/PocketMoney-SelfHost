@@ -110,7 +110,7 @@ const Transactions = () => {
   }, [categoriesRaw, categoryUsage]);
 
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, treatment, showExcluded, reviewOnly, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
@@ -120,7 +120,6 @@ const Transactions = () => {
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (treatment !== "all") q = q.eq("treatment", treatment as any);
-      if (!showExcluded) q = q.eq("excluded", false);
       if (reviewOnly) q = q.eq("needs_review", true);
       if (search) q = q.ilike("name", `%${search}%`);
       if (dateFrom) q = q.gte("date", dateFrom);
