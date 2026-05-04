@@ -14,6 +14,8 @@ import { toast } from "@/hooks/use-toast";
 import { Upload, FileText, Sparkles, Loader2, AlertTriangle, Check, Copy, Flag } from "lucide-react";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 
+const DUP_GROUP_BATCH_SIZE = 50;
+
 type Staged = ParsedTxn & {
   _row: number;
   _category_id: string | null;
@@ -48,6 +50,8 @@ type DupGroupRowProps = {
   onSetAction: (idx: number, action: DupGroup["action"]) => void;
   onSetKeep: (idx: number, keepIndex: number) => void;
 };
+
+type DupActionSummary = Record<DupGroup["action"], number>;
 
 const DupGroupRow = ({ group: g, index: gi, stagedById, onSetAction, onSetKeep }: DupGroupRowProps) => (
   <div className="rounded-md border bg-background p-3 space-y-2">
@@ -132,6 +136,7 @@ const Import = () => {
   const [busy, setBusy] = useState(false);
   const [aiBusy, setAiBusy] = useState(false);
   const [dupGroups, setDupGroups] = useState<DupGroup[]>([]);
+  const [visibleDupGroups, setVisibleDupGroups] = useState(DUP_GROUP_BATCH_SIZE);
   const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
   const [visibleRows, setVisibleRows] = useState(200);
 
@@ -246,6 +251,7 @@ const Import = () => {
       setProgress({ stage: "Detecting duplicates", current: 0, total: 1 });
       const dups = await detectDuplicates(staged);
       setDupGroups(dups);
+      setVisibleDupGroups(DUP_GROUP_BATCH_SIZE);
       toast({
         title: `Parsed ${staged.length} rows from ${file.name}`,
         description: dups.length > 0 ? `Found ${dups.length} potential duplicate group${dups.length === 1 ? "" : "s"} to review.` : undefined,
@@ -388,7 +394,7 @@ const Import = () => {
         title: `Imported ${count ?? rows.length} of ${rows.length}`,
         description: flaggedTotal > 0 ? `${flaggedTotal} transaction${flaggedTotal === 1 ? "" : "s"} flagged for review.` : undefined,
       });
-      setStaging([]); setFilename(""); setDupGroups([]);
+      setStaging([]); setFilename(""); setDupGroups([]); setVisibleDupGroups(DUP_GROUP_BATCH_SIZE);
       qc.invalidateQueries();
     } catch (e: any) {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
@@ -409,6 +415,15 @@ const Import = () => {
   }, []);
 
   const stagedById = useMemo(() => new Map(staging.map(s => [s._row, s])), [staging]);
+  const dupActionSummary = useMemo<DupActionSummary>(() => {
+    return dupGroups.reduce(
+      (summary, group) => {
+        summary[group.action] += 1;
+        return summary;
+      },
+      { keep_both: 0, merge: 0, flag: 0 } as DupActionSummary,
+    );
+  }, [dupGroups]);
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
@@ -480,20 +495,20 @@ const Import = () => {
                     <span className="text-[10px] uppercase tracking-wide text-muted-foreground">Apply to all groups</span>
                     <div className="flex gap-1">
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("keep_both")}>
-                        <Check className="h-3 w-3" /> Keep all
+                        <Check className="h-3 w-3" /> Keep all ({dupActionSummary.keep_both})
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("merge")}>
-                        <Copy className="h-3 w-3" /> Merge all
+                        <Copy className="h-3 w-3" /> Merge all ({dupActionSummary.merge})
                       </Button>
                       <Button size="sm" variant="outline" className="h-7 gap-1.5" onClick={() => setAllGroupsAction("flag")}>
-                        <Flag className="h-3 w-3" /> Flag all
+                        <Flag className="h-3 w-3" /> Flag all ({dupActionSummary.flag})
                       </Button>
                     </div>
                   </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-3">
-                {dupGroups.map((g, gi) => (
+                {dupGroups.slice(0, visibleDupGroups).map((g, gi) => (
                   <MemoDupGroupRow
                     key={g.key}
                     group={g}
@@ -503,6 +518,14 @@ const Import = () => {
                     onSetKeep={setGroupKeep}
                   />
                 ))}
+                {dupGroups.length > visibleDupGroups && (
+                  <div className="flex items-center justify-between gap-3 rounded-md border bg-background px-3 py-3 text-xs text-muted-foreground">
+                    <span>Showing {visibleDupGroups.toLocaleString()} of {dupGroups.length.toLocaleString()} duplicate groups.</span>
+                    <Button size="sm" variant="outline" onClick={() => setVisibleDupGroups(v => Math.min(v + DUP_GROUP_BATCH_SIZE, dupGroups.length))}>
+                      Show more
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           )}
@@ -530,7 +553,7 @@ const Import = () => {
                   AI categorize
                 </Button>
                 <Button onClick={commit} disabled={busy}>Commit import</Button>
-                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); setDupGroups([]); }}>Cancel</Button>
+                <Button variant="ghost" onClick={() => { setStaging([]); setFilename(""); setDupGroups([]); setVisibleDupGroups(DUP_GROUP_BATCH_SIZE); }}>Cancel</Button>
               </div>
             </CardHeader>
             <CardContent className="p-0">
