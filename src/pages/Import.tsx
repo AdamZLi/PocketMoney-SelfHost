@@ -35,8 +35,6 @@ type DupGroup = {
   action: "merge" | "keep_both" | "flag";
 };
 
-const FUZZY_DAYS = 1;
-
 function dateKey(d: string, offset = 0) {
   const dt = new Date(d + "T00:00:00Z");
   dt.setUTCDate(dt.getUTCDate() + offset);
