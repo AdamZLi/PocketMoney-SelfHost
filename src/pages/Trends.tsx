@@ -94,14 +94,18 @@ const Trends = () => {
   }, [months, dateFrom, dateTo]);
 
   const { data: rows = [], isLoading } = useQuery({
-    queryKey: ["trends", "monthly", range.from, range.to, accountId],
+    queryKey: ["trends", "monthly", range.from, range.to, accountId, showRaw],
     queryFn: async () => {
+      // For amortized purchases, we may need data older than the visible range
+      // (a flight purchased 6 months ago that amortizes into this month).
+      const lookback = new Date(range.from);
+      lookback.setMonth(lookback.getMonth() - 24);
+      const fetchFrom = lookback.toISOString().slice(0, 10);
       let q = supabase
         .from("transactions")
-        .select("date,amount,excluded,account_id,category_id,categories(name,parent_category)")
-        .gte("date", range.from)
+        .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+        .gte("date", fetchFrom)
         .lte("date", range.to)
-        .eq("excluded", false)
         .order("date", { ascending: true });
       if (accountId !== "all") q = q.eq("account_id", accountId);
       const { data, error } = await q;
