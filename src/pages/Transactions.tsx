@@ -159,6 +159,66 @@ const Transactions = () => {
     },
   });
 
+  // Per-month review summary: list of months with reviewed/total counts.
+  const { data: monthSummary = [] } = useQuery({
+    queryKey: ["txns", "month-review-summary"],
+    queryFn: async () => {
+      // Paginate to bypass 1000-row cap.
+      const PAGE = 1000;
+      const all: { date: string; reviewed: boolean }[] = [];
+      for (let from = 0; ; from += PAGE) {
+        const { data, error } = await supabase
+          .from("transactions")
+          .select("date,reviewed")
+          .order("date", { ascending: false })
+          .range(from, from + PAGE - 1);
+        if (error) throw error;
+        const batch = (data ?? []) as any[];
+        all.push(...batch);
+        if (batch.length < PAGE) break;
+      }
+      const map = new Map<string, { total: number; reviewed: number }>();
+      for (const r of all) {
+        const k = String(r.date).slice(0, 7);
+        const cur = map.get(k) ?? { total: 0, reviewed: 0 };
+        cur.total += 1;
+        if (r.reviewed) cur.reviewed += 1;
+        map.set(k, cur);
+      }
+      return [...map.entries()]
+        .sort((a, b) => (a[0] < b[0] ? 1 : -1))
+        .map(([k, v]) => ({ month: k, total: v.total, reviewed: v.reviewed }));
+    },
+  });
+
+  async function toggleReviewed(id: string, next: boolean) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
+  async function markMonthReviewed(targetMonth: string, next: boolean) {
+    if (targetMonth === "all") return;
+    const [y, m] = targetMonth.split("-").map(Number);
+    const from = `${targetMonth}-01`;
+    const last = new Date(y, m, 0).getDate();
+    const to = `${targetMonth}-${String(last).padStart(2, "0")}`;
+    const { error, count } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any, { count: "exact" })
+      .gte("date", from)
+      .lte("date", to);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    toast({
+      title: next ? `Marked ${targetMonth} as reviewed` : `Cleared review on ${targetMonth}`,
+      description: `${count ?? 0} transaction${(count ?? 0) === 1 ? "" : "s"} updated.`,
+    });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
   const total = useMemo(
     () => (txns as any[]).filter(t => !t.excluded).reduce((s, t) => s + Number(t.amount), 0),
     [txns]
