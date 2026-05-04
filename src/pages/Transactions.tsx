@@ -111,21 +111,36 @@ const Transactions = () => {
     return arr;
   }, [categoriesRaw, categoryUsage]);
 
+  // Compute effective date range, honoring month selection.
+  const monthRange = useMemo(() => {
+    if (month === "all") return null;
+    const [y, m] = month.split("-").map(Number);
+    const from = `${month}-01`;
+    const last = new Date(y, m, 0).getDate();
+    const to = `${month}-${String(last).padStart(2, "0")}`;
+    return { from, to };
+  }, [month]);
+
+  const effectiveFrom = monthRange?.from ?? dateFrom;
+  const effectiveTo = monthRange?.to ?? dateTo;
+
   const { data: txns = [] } = useQuery({
-    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, dateFrom, dateTo, sortDir }],
+    queryKey: ["txns", { search, accountId, categoryId, treatment, reviewOnly, reviewedFilter, month, dateFrom, dateTo, sortDir }],
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
       if (categoryId !== "all") q = q.eq("category_id", categoryId);
       if (treatment !== "all") q = q.eq("treatment", treatment as any);
       if (reviewOnly) q = q.eq("needs_review", true);
+      if (reviewedFilter === "reviewed") q = q.eq("reviewed", true);
+      else if (reviewedFilter === "not_reviewed") q = q.eq("reviewed", false);
       if (search) q = q.ilike("name", `%${search}%`);
-      if (dateFrom) q = q.gte("date", dateFrom);
-      if (dateTo) q = q.lte("date", dateTo);
+      if (effectiveFrom) q = q.gte("date", effectiveFrom);
+      if (effectiveTo) q = q.lte("date", effectiveTo);
       const { data, error } = await q;
       if (error) throw error;
       return data ?? [];
