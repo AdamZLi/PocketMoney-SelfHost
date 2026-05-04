@@ -1,16 +1,16 @@
 # Handling non-recurring expenses
 
-The core idea: add an explicit **treatment** to each transaction that tells trends/budgets *how* to count it, not just *whether*. Today there's only a binary `excluded` flag — that's too blunt for the cases you described.
+The core idea: add an explicit **treatment** to each transaction that tells trends/budgets _how_ to count it, not just _whether_. Today there's only a binary `excluded` flag — that's too blunt for the cases you described.
 
 ## The five treatments
 
-| Treatment | What it means | Example | Trend impact |
-|---|---|---|---|
-| **Normal** | Default, counts in the month it occurred | Groceries | Full amount, that month |
-| **Excluded (one-off)** | Real cash out, but not part of "lifestyle spend" | Wedding gift, moving fee | Hidden from trends/budget; visible in transactions |
-| **Refundable** | Money you expect back in full | Security deposit | Hidden from trends; tracked in a "Pending refund" pile until matched |
-| **Reimbursable / split** | You paid, but someone owes you part or all | Group dinner, work travel | Only your share counts in trends; remainder goes to follow-up pile |
-| **Amortize over N months** | Lumpy purchase smoothed across months | Annual flight, hotel | Spread evenly across N months in trends; raw transaction hidden from monthly totals |
+| Treatment                  | What it means                                    | Example                   | Trend impact                                                                        |
+| -------------------------- | ------------------------------------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
+| **Normal**                 | Default, counts in the month it occurred         | Groceries                 | Full amount, that month                                                             |
+| **Excluded (one-off)**     | Real cash out, but not part of "lifestyle spend" | Wedding gift, moving fee  | Hidden from trends/budget; visible in transactions                                  |
+| **Refundable**             | Money you expect back in full                    | Security deposit          | Hidden from trends; tracked in a "Pending refund" pile until matched                |
+| **Reimbursable / split**   | You paid, but someone owes you part or all       | Group dinner, work travel | Only your share counts in trends; remainder goes to follow-up pile                  |
+| **Amortize over N months** | Lumpy purchase smoothed across months            | Annual flight, hotel      | Spread evenly across N months in trends; raw transaction hidden from monthly totals |
 
 Plus a **"refund of …"** link: when a credit hits your account that looks like a refund of an existing charge, auto-detect and propose linking them; the linked pair nets to zero in trends.
 
@@ -34,7 +34,7 @@ Click the chip → a compact popover (not a full dialog) opens with the five opt
 
 Save → the chip on the row updates to a colored pill: `Refundable · pending`, `Split · $40 of $120`, `Amortized · 12 mo`. The amount in the row is struck through and the **effective monthly amount** is shown beside it in muted text. No page reload, just the row re-renders.
 
-A toast offers: *"Always treat United Airlines as amortized over 12 months? [Yes, remember]"* — same pattern as the existing categorization rule prompt.
+A toast offers: _"Always treat United Airlines as amortized over 12 months? [Yes, remember]"_ — same pattern as the existing categorization rule prompt.
 
 ### B. Bulk action
 
@@ -93,6 +93,7 @@ When **off** (default): trends show only normal + your-share + amortized slices.
 When **on**: trends show raw amounts so power users can sanity-check.
 
 Hovering a month tooltip shows a breakdown:
+
 ```text
  March 2026
  Normal spend       $2,140
@@ -103,16 +104,17 @@ Hovering a month tooltip shows a breakdown:
 
 ### F. Visual language summary
 
-| State | Where it shows | Style |
-|---|---|---|
-| Treatment chip | Transaction row | Small pill, neutral when "Normal", colored + icon for others |
-| Excluded from trends | Transaction row amount | Strikethrough on raw amount, effective amount shown next to it |
-| Follow-up needed | Toolbar badge + row icon | Amber, with count |
-| Linked refund | Both rows | Small chain-link icon; clicking jumps to the partner |
+| State                | Where it shows           | Style                                                          |
+| -------------------- | ------------------------ | -------------------------------------------------------------- |
+| Treatment chip       | Transaction row          | Small pill, neutral when "Normal", colored + icon for others   |
+| Excluded from trends | Transaction row amount   | Strikethrough on raw amount, effective amount shown next to it |
+| Follow-up needed     | Toolbar badge + row icon | Amber, with count                                              |
+| Linked refund        | Both rows                | Small chain-link icon; clicking jumps to the partner           |
 
 ## What gets built (technical)
 
 ### 1. Schema
+
 - `transactions.treatment` enum: `normal | excluded | refundable | reimbursable | amortized`
 - `transactions.treatment_meta` jsonb — per-treatment fields (expected refund, your share, owed by, months, start date, reason)
 - `transactions.linked_txn_id` (nullable self-FK) for refund pairs
@@ -120,7 +122,9 @@ Hovering a month tooltip shows a breakdown:
 - Migrate existing `excluded = true` → `treatment = 'excluded'`
 
 ### 2. Single source of truth for trends
+
 Helper `effectiveMonthlyContribution(txn, monthIso)` in `src/lib/trends.ts`:
+
 - `normal` → full amount in `date`'s month
 - `excluded` / `refundable` → 0
 - `reimbursable` → `your_share` in that month
@@ -130,6 +134,7 @@ Helper `effectiveMonthlyContribution(txn, monthIso)` in `src/lib/trends.ts`:
 Both Trends and Dashboard import this helper; nothing else touches the rule.
 
 ### 3. UI surfaces
+
 - Treatment popover component (reused on row + bulk toolbar)
 - Refund-suggestion card on Import + standalone "Detect refunds" preview on Transactions
 - Tabbed Review drawer replacing the current single-purpose duplicate filter
@@ -150,3 +155,5 @@ Both Trends and Dashboard import this helper; nothing else touches the rule.
 1. **Amortization direction** — forward only (Jan flight → Jan–Dec), or also backward? Forward is simpler and matches typical budgeting tools.
 2. **Refundable visibility in trends** — hide entirely (default) or show as a separate "pending outflow" line until refunded?
 3. **Default amortization period** — 12 months or prompt the user every time? I'd default to 12 with one click to change.
+
+## 5. AI agent to also decide on the treatment plan?
