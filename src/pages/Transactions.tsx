@@ -835,6 +835,20 @@ const Transactions = () => {
           </SelectContent>
         </Select>
 
+        <Select value={treatment} onValueChange={setTreatment}>
+          <SelectTrigger className="h-9 w-auto gap-2 border-0 bg-transparent text-muted-foreground font-normal hover:bg-muted/50 focus:ring-0">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All treatments</SelectItem>
+            <SelectItem value="normal">Normal</SelectItem>
+            <SelectItem value="excluded">Excluded (one-off)</SelectItem>
+            <SelectItem value="refundable">Refundable</SelectItem>
+            <SelectItem value="reimbursable">Reimbursable / split</SelectItem>
+            <SelectItem value="amortized">Amortized</SelectItem>
+          </SelectContent>
+        </Select>
+
         {reviewCount > 0 && (
           <Button
             variant="ghost"
