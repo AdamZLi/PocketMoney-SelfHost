@@ -43,6 +43,9 @@ type Row = {
   excluded: boolean;
   account_id: string | null;
   category_id: string | null;
+  treatment: string | null;
+  treatment_meta: any;
+  linked_txn_id: string | null;
   categories: { name: string | null; parent_category: string | null } | null;
 };
 
