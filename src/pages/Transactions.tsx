@@ -509,8 +509,7 @@ const Transactions = () => {
     (accountId !== "all" ? 1 : 0) +
     (categoryId !== "all" ? 1 : 0) +
     (treatment !== "all" ? 1 : 0) +
-    (dateFrom || dateTo ? 1 : 0) +
-    (showExcluded ? 1 : 0);
+    (dateFrom || dateTo ? 1 : 0);
 
   return (
     <div className="max-w-6xl mx-auto px-8 py-12">
