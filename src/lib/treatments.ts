@@ -105,8 +105,12 @@ export function treatmentLabel(t: TxnLike): string | null {
       const share = typeof meta.your_share === "number" ? meta.your_share : Math.abs(Number(t.amount) || 0);
       return `Split · ${formatMoney(share)} of ${formatMoney(Math.abs(Number(t.amount) || 0))}`;
     }
-    case "amortized":
+    case "amortized": {
+      if ((meta.amort_mode ?? "calendar_year") === "calendar_year") {
+        return `Amortized · ${t.date.slice(0, 4)} (Jan–Dec)`;
+      }
       return `Amortized · ${meta.months ?? 12} mo`;
+    }
     default:
       return null;
   }
