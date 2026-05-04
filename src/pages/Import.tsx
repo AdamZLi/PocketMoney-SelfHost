@@ -332,6 +332,7 @@ const Import = () => {
       toast({ title: "Import failed", description: e.message, variant: "destructive" });
     } finally {
       setBusy(false);
+      setProgress(null);
     }
   }
 
