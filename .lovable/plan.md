@@ -1,69 +1,152 @@
-## Answer first
+# Handling non-recurring expenses
 
-The earlier change applies to **every** merchant during import — not just those two. `cleanMerchant()` runs on every row in `parseFile.ts` and uses generic rules (strip processor prefixes like `TST*`/`SQ *`, drop store numbers `#13078`, drop reference IDs like `P730740576`, drop URLs, title-case ALL-CAPS) plus a small hard-coded brand map (Walgreens, LinkedIn, Amazon, Uber, etc.).
+The core idea: add an explicit **treatment** to each transaction that tells trends/budgets *how* to count it, not just *whether*. Today there's only a binary `excluded` flag — that's too blunt for the cases you described.
 
-Two gaps to close:
-1. The brand map is baked into code — you can't edit it.
-2. Cleaning happens at parse time only, so already-imported transactions keep their messy names, and there's no way to teach the system a new alias.
+## The five treatments
 
-## Plan
+| Treatment | What it means | Example | Trend impact |
+|---|---|---|---|
+| **Normal** | Default, counts in the month it occurred | Groceries | Full amount, that month |
+| **Excluded (one-off)** | Real cash out, but not part of "lifestyle spend" | Wedding gift, moving fee | Hidden from trends/budget; visible in transactions |
+| **Refundable** | Money you expect back in full | Security deposit | Hidden from trends; tracked in a "Pending refund" pile until matched |
+| **Reimbursable / split** | You paid, but someone owes you part or all | Group dinner, work travel | Only your share counts in trends; remainder goes to follow-up pile |
+| **Amortize over N months** | Lumpy purchase smoothed across months | Annual flight, hotel | Spread evenly across N months in trends; raw transaction hidden from monthly totals |
 
-### 1. New `merchant_aliases` table
+Plus a **"refund of …"** link: when a credit hits your account that looks like a refund of an existing charge, auto-detect and propose linking them; the linked pair nets to zero in trends.
 
-User-managed mapping from a pattern (substring or regex, case-insensitive) to a clean display name, with priority for tie-breaking.
+## User experience
+
+### A. Tagging a transaction (the main flow)
+
+On any transaction row, next to the category dropdown, a small **"Treatment"** chip:
 
 ```text
-merchant_aliases
-  id, pattern, match_type (contains|exact|regex),
-  display_name, priority, source (user|seed),
-  created_at, updated_at
+ Date     Merchant        Category    Treatment        Amount
+ Mar 12   United Airlines Travel      [ Normal  ▾ ]    -$840.00
 ```
 
-Seed it with the brands currently hardcoded in `cleanMerchant.ts` (`source = 'seed'`) so users can edit/disable them.
+Click the chip → a compact popover (not a full dialog) opens with the five options as cards. Pick one → an inline mini-form appears for that treatment's details:
 
-### 2. Refactored cleaner (`src/lib/cleanMerchant.ts`)
+- **Refundable** → one field: "Expected refund date" (optional). Done.
+- **Split / reimbursable** → two fields: "Your share" (amount or %) + "Owed by" (free text name). Auto-suggests 50% as a starting point.
+- **Amortize** → one field: "Spread over [12] months starting [Mar 2026]". Live preview underneath: "≈ $70/mo Mar 2026 → Feb 2027".
+- **Excluded** → optional "Reason" note.
 
-Pipeline applied to every raw merchant string:
+Save → the chip on the row updates to a colored pill: `Refundable · pending`, `Split · $40 of $120`, `Amortized · 12 mo`. The amount in the row is struck through and the **effective monthly amount** is shown beside it in muted text. No page reload, just the row re-renders.
 
-1. **Alias lookup** — check `merchant_aliases` (highest priority match wins). If hit → return `display_name`.
-2. **Generic normalization** (when no alias matches):
-   - Strip processor/channel prefixes: `TST*`, `SQ *`, `SP *`, `PAYPAL *`, `PP*`, `IN *`, `POS`, `DEBIT`, `CHECKCARD`, `RECURRING`, `PURCHASE`
-   - Strip URLs / domains (`HELP.UBER.COM`, `AMAZON.COM`)
-   - Strip store/location codes: `#13078`, `STORE 1234`, trailing 4+ digit runs
-   - Strip reference IDs: `P730740576`, `*A12B3`, long alnum tokens (8+ chars mixed letters+digits)
-   - Strip trailing `CITY ST` (2-letter state) and corporate suffixes (`LLC`, `INC`, `CORP`)
-   - Collapse separators (`*`, `_`, multiple spaces)
-   - Title-case if input is ALL CAPS; preserve mixed-case input (so "LinkedIn" stays "LinkedIn")
-3. **Fallback** — if normalization empties the string, return original trimmed.
+A toast offers: *"Always treat United Airlines as amortized over 12 months? [Yes, remember]"* — same pattern as the existing categorization rule prompt.
 
-Cleaner is async and accepts a preloaded alias list so it can run in batches without re-querying per row.
+### B. Bulk action
 
-### 3. Apply during import (existing behavior, improved)
+Same treatment picker is available from the bulk-edit toolbar that already appears when rows are selected. Useful for tagging an entire trip's worth of transactions at once.
 
-`parseFile.ts` will load aliases once per import and pass them into `normalizeRow`. Same as today, but driven by the editable table.
+### C. Follow-up pile (the "Review" badge)
 
-### 4. New page: `/aliases` (Merchant Aliases editor)
+The amber **Review** badge in the Transactions toolbar (already there for duplicates) becomes a tabbed drawer when clicked:
 
-CRUD UI similar to `Categories.tsx`:
-- List of aliases (pattern, type, display name, priority, source, edit/delete)
-- Add new alias form
-- "Test" input box: type a raw merchant string, see what it cleans to in real time
-- "Apply to existing transactions" button — runs the cleaner across all `transactions.name` values and updates rows whose cleaned name differs (logged to `transaction_edits` so the audit trail captures it)
+```text
+ ┌─ Review ───────────────────────────────────────────┐
+ │  [ Duplicates 2 ] [ Refunds 3 ] [ Owed to me 4 ]   │
+ │                                                     │
+ │  Refundable · pending                               │
+ │  ──────────────────────────────────────────────     │
+ │  Jan 4   Greystar Apartments        $2,400.00       │
+ │  "Security deposit"                                 │
+ │           [ Mark refunded ] [ Link to txn ] [ ✕ ]   │
+ │                                                     │
+ │  Feb 18  Airbnb                       $350.00       │
+ │           [ Mark refunded ] [ Link to txn ] [ ✕ ]   │
+ └─────────────────────────────────────────────────────┘
+```
 
-Add a sidebar entry in `AppLayout` for "Aliases".
+- **Mark refunded / settled** → clears the follow-up flag; if the user picked "Link to txn" first, the two transactions are linked and net to zero.
+- **✕** → cancel follow-up (treats as resolved without a linked refund).
+- Items older than 30 days get a small "30d+" pill so they're easy to spot.
 
-### 5. Quick-add from Transactions page
+### D. Refund auto-detection
 
-On the transactions list, add a small "Clean as…" action in the row menu so when you spot a messy name you can one-click create an alias mapping `raw → your chosen display name` and re-run the cleaner.
+When a credit (positive amount) lands on import, the existing duplicate-review card on the import page gains a new section:
 
-### 6. Tests / docs
+```text
+ ┌─ Possible refunds detected ─────────────────────────┐
+ │  Mar 20  Best Buy        +$129.00                   │
+ │  Looks like a refund of:                            │
+ │   Mar 5  Best Buy        -$129.00 (Electronics)     │
+ │  [ Link as refund ] [ Not a refund ]                │
+ └─────────────────────────────────────────────────────┘
+```
 
-- Unit tests in `src/lib/__tests__/cleanMerchant.test.ts` covering: prefixes, store numbers, ref IDs, URLs, mixed-case preservation, alias override.
-- Update `docs/PRD.md` (`FR-CAT` → add `FR-MERCH` section) and `docs/TEST_SPEC.md` regression suite.
+Linking marks the original as `refunded` and they net to zero in trends. Both rows still appear in the transaction log so the audit trail is intact.
 
-## Technical details
+For older transactions (already in the DB), a **"Detect refunds"** button on the Transactions page runs the same heuristic over the last 90 days and surfaces a preview-then-apply card (same pattern as the AI scan).
 
-- Alias matching uses a single pre-sorted (by priority desc) array; first match wins. Regex patterns are compiled once with `new RegExp(pattern, 'i')` inside a try/catch (invalid regex disables that row with a warning in the editor).
-- "Apply to existing" runs client-side in batches of 500 with `supabase.from('transactions').update({name}).eq('id', id)` — small dataset, no edge function needed for Phase 1.
-- RLS: same `phase1_open_all` permissive policy as other tables (will tighten in Phase 1.5 with auth).
-- No schema changes to `transactions` — only the `name` column gets rewritten in place; `raw_row` JSONB still holds the original.
+### E. Trends page changes
+
+A subtle legend control above the chart:
+
+```text
+ Spending by month            [Show one-off & amortized: ◯ Off]
+```
+
+When **off** (default): trends show only normal + your-share + amortized slices. The huge United Airlines spike disappears and instead becomes a quiet $70/mo bump across 12 months.
+
+When **on**: trends show raw amounts so power users can sanity-check.
+
+Hovering a month tooltip shows a breakdown:
+```text
+ March 2026
+ Normal spend       $2,140
+ Amortized          $   70   (United Airlines, 1 of 12)
+ ─────────────────────────
+ Total              $2,210
+```
+
+### F. Visual language summary
+
+| State | Where it shows | Style |
+|---|---|---|
+| Treatment chip | Transaction row | Small pill, neutral when "Normal", colored + icon for others |
+| Excluded from trends | Transaction row amount | Strikethrough on raw amount, effective amount shown next to it |
+| Follow-up needed | Toolbar badge + row icon | Amber, with count |
+| Linked refund | Both rows | Small chain-link icon; clicking jumps to the partner |
+
+## What gets built (technical)
+
+### 1. Schema
+- `transactions.treatment` enum: `normal | excluded | refundable | reimbursable | amortized`
+- `transactions.treatment_meta` jsonb — per-treatment fields (expected refund, your share, owed by, months, start date, reason)
+- `transactions.linked_txn_id` (nullable self-FK) for refund pairs
+- `transactions.review_kind` enum on the existing `needs_review` flag: `duplicate | refund_pending | reimbursement_pending` so the follow-up pile is one unified queue
+- Migrate existing `excluded = true` → `treatment = 'excluded'`
+
+### 2. Single source of truth for trends
+Helper `effectiveMonthlyContribution(txn, monthIso)` in `src/lib/trends.ts`:
+- `normal` → full amount in `date`'s month
+- `excluded` / `refundable` → 0
+- `reimbursable` → `your_share` in that month
+- `amortized` → `amount/months` for each month between `start_date` and `start_date + N`
+- Linked refund pairs → 0 on both sides
+
+Both Trends and Dashboard import this helper; nothing else touches the rule.
+
+### 3. UI surfaces
+- Treatment popover component (reused on row + bulk toolbar)
+- Refund-suggestion card on Import + standalone "Detect refunds" preview on Transactions
+- Tabbed Review drawer replacing the current single-purpose duplicate filter
+- Trends legend toggle + month-breakdown tooltip
+
+### 4. Amortization in SQL is awkward — done client-side in the trends aggregator. Fine for our data sizes.
+
+## What I'd ship first vs. later
+
+**Phase 1 (MVP):** treatments, row-level picker, trends/dashboard rewrite, follow-up tabs with mark-settled.
+
+**Phase 2:** refund auto-detection (import + standalone) and "remember this treatment for merchant" rules.
+
+**Phase 3:** multi-person splits, reminders for stale follow-ups, dashboard widgets for "money owed to you".
+
+## Open questions worth deciding
+
+1. **Amortization direction** — forward only (Jan flight → Jan–Dec), or also backward? Forward is simpler and matches typical budgeting tools.
+2. **Refundable visibility in trends** — hide entirely (default) or show as a separate "pending outflow" line until refunded?
+3. **Default amortization period** — 12 months or prompt the user every time? I'd default to 12 with one click to change.
