@@ -121,7 +121,7 @@ const Import = () => {
       const stagedCount = members.filter(m => m.kind === "staged").length;
       if (members.length >= 2 && stagedCount >= 1) {
         const keepIndex = members.findIndex(m => m.kind === "staged");
-        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "merge" });
+        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "keep_both" });
       }
     }
     return result;
@@ -382,7 +382,7 @@ const Import = () => {
                   Review {dupGroups.length} potential duplicate group{dupGroups.length === 1 ? "" : "s"}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  Same merchant + amount on the same date. Compared across this import and existing transactions.
+                  Same merchant + amount on the same date. These might be legit repeat purchases (e.g., two Subway swipes the same day) — choose <span className="font-medium">Keep all</span> to import every row, or <span className="font-medium">Merge all</span> to collapse them into one. Compared across this import and existing transactions.
                 </p>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -395,19 +395,19 @@ const Import = () => {
                       <div className="flex gap-1">
                         <Button
                           size="sm"
-                          variant={g.action === "merge" ? "default" : "outline"}
-                          className="h-7 gap-1.5"
-                          onClick={() => setGroupAction(gi, "merge")}
-                        >
-                          <Copy className="h-3 w-3" /> Merge
-                        </Button>
-                        <Button
-                          size="sm"
                           variant={g.action === "keep_both" ? "default" : "outline"}
                           className="h-7 gap-1.5"
                           onClick={() => setGroupAction(gi, "keep_both")}
                         >
-                          <Check className="h-3 w-3" /> Keep both
+                          <Check className="h-3 w-3" /> Keep all
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={g.action === "merge" ? "default" : "outline"}
+                          className="h-7 gap-1.5"
+                          onClick={() => setGroupAction(gi, "merge")}
+                        >
+                          <Copy className="h-3 w-3" /> Merge all
                         </Button>
                         <Button
                           size="sm"
