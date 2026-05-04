@@ -352,6 +352,26 @@ const Import = () => {
         <p className="text-sm text-muted-foreground mt-1">CSV and XLSX supported. PDF support is wired up via the AI parser.</p>
       </header>
 
+      {progress && (
+        <Card>
+          <CardContent className="py-4 space-y-2">
+            <div className="flex items-center justify-between text-sm">
+              <div className="flex items-center gap-2 font-medium">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                {progress.stage}
+                {progress.detail && <span className="text-muted-foreground font-normal">· {progress.detail}</span>}
+              </div>
+              <div className="text-xs text-muted-foreground tabular-nums">
+                {progress.total > 1
+                  ? `${progress.current.toLocaleString()} / ${progress.total.toLocaleString()} (${Math.round((progress.current / progress.total) * 100)}%)`
+                  : "Working…"}
+              </div>
+            </div>
+            <Progress value={progress.total > 0 ? (progress.current / progress.total) * 100 : 0} className="h-2" />
+          </CardContent>
+        </Card>
+      )}
+
       {staging.length === 0 ? (
         <Card>
           <CardContent className="py-12">
