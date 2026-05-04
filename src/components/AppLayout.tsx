@@ -30,8 +30,8 @@ export const AppLayout = () => {
       .catch(() => { /* silent */ });
   }, [qc]);
   return (
-    <div className="min-h-screen flex bg-background">
-      <aside className="w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col">
+    <div className="h-screen flex bg-background overflow-hidden">
+      <aside className="w-60 shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0">
         <div className="px-6 py-5 border-b border-sidebar-border">
           <h1 className="text-lg font-semibold text-sidebar-primary-foreground">
             <span className="text-sidebar-primary">●</span> Ledger
@@ -62,7 +62,7 @@ export const AppLayout = () => {
           Single-user mode. Auth & bank sync coming in Phase 1.5.
         </div>
       </aside>
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto h-screen">
         <Outlet />
       </main>
     </div>
