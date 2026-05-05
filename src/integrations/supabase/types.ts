@@ -459,6 +459,7 @@ export type Database = {
         | "refundable"
         | "reimbursable"
         | "amortized"
+        | "split"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -607,6 +608,7 @@ export const Constants = {
         "refundable",
         "reimbursable",
         "amortized",
+        "split",
       ],
     },
   },

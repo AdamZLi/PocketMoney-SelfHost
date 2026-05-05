@@ -1,7 +1,15 @@
 // Single source of truth for how a transaction contributes to monthly trends.
 // Used by Trends + Dashboard. Keep all rules here.
 
-export type Treatment = "normal" | "excluded" | "refundable" | "reimbursable" | "amortized";
+export type Treatment = "normal" | "excluded" | "refundable" | "reimbursable" | "amortized" | "split";
+
+export type SplitPart = {
+  id?: string;
+  label?: string;
+  amount: number; // absolute, in same units as txn amount
+  treatment: Exclude<Treatment, "split">;
+  meta?: TreatmentMeta;
+};
 
 export type TreatmentMeta = {
   // refundable
@@ -19,6 +27,8 @@ export type TreatmentMeta = {
   reason?: string;
   // refund pair (set on the original charge when linked)
   refunded_by_txn_id?: string | null;
+  // split into multiple sub-parts (each with its own treatment)
+  parts?: SplitPart[];
 };
 
 export type TxnLike = {
@@ -56,25 +66,54 @@ export function effectiveMonthlyContribution(t: TxnLike, monthIso: string): numb
       return monthKey(t.date) === monthIso ? Math.abs(share) : 0;
     }
     case "amortized": {
-      const mode = meta.amort_mode ?? "calendar_year";
-      if (mode === "calendar_year") {
-        // Spread evenly across all 12 months of the transaction's calendar year
-        // (both backward and forward from the txn date).
-        const year = t.date.slice(0, 4);
-        if (monthIso.slice(0, 4) !== year) return 0;
-        return amt / 12;
+      return amortizedContribution(amt, meta, t.date, monthIso);
+    }
+    case "split": {
+      const parts = meta.parts ?? [];
+      let sum = 0;
+      for (const part of parts) {
+        sum += partContribution(part, t.date, monthIso);
       }
-      const months = Math.max(1, Math.floor(meta.months ?? 12));
-      const start = (meta.start_date ?? t.date).slice(0, 7);
-      const idx = monthsBetween(start, monthIso);
-      if (idx < 0 || idx >= months) return 0;
-      return amt / months;
+      return sum;
     }
     case "normal":
     default:
       // Linked refunds (the one marked as the refund) net to zero.
       if (t.linked_txn_id && Number(t.amount) > 0) return 0;
       return monthKey(t.date) === monthIso ? Number(t.amount) : 0;
+  }
+}
+
+function amortizedContribution(amt: number, meta: TreatmentMeta, txnDate: string, monthIso: string): number {
+  const mode = meta.amort_mode ?? "calendar_year";
+  if (mode === "calendar_year") {
+    const year = txnDate.slice(0, 4);
+    if (monthIso.slice(0, 4) !== year) return 0;
+    return amt / 12;
+  }
+  const months = Math.max(1, Math.floor(meta.months ?? 12));
+  const start = (meta.start_date ?? txnDate).slice(0, 7);
+  const idx = monthsBetween(start, monthIso);
+  if (idx < 0 || idx >= months) return 0;
+  return amt / months;
+}
+
+function partContribution(part: SplitPart, txnDate: string, monthIso: string): number {
+  const amt = Math.abs(part.amount || 0);
+  const meta = part.meta ?? {};
+  switch (part.treatment) {
+    case "excluded":
+    case "refundable":
+      return 0;
+    case "reimbursable": {
+      const share = typeof meta.your_share === "number" ? meta.your_share : amt;
+      return monthKey(txnDate) === monthIso ? Math.abs(share) : 0;
+    }
+    case "amortized":
+      return amortizedContribution(amt, meta, txnDate, monthIso);
+    case "normal":
+    default:
+      return monthKey(txnDate) === monthIso ? amt : 0;
   }
 }
 
@@ -91,6 +130,41 @@ export function followUpKind(t: TxnLike): "refund_pending" | "reimbursement_pend
   if (treatment === "refundable" && (meta.refund_status ?? "pending") === "pending") return "refund_pending";
   if (treatment === "reimbursable" && (meta.reimbursement_status ?? "pending") === "pending") return "reimbursement_pending";
   return null;
+}
+
+/** Iterate every "logical" item in a transaction (the txn itself, or its split parts). */
+export function expandFollowUps(t: TxnLike & { id: string; name: string }): Array<{
+  id: string;
+  partIndex?: number;
+  partLabel?: string;
+  date: string;
+  name: string;
+  amount: number;
+  treatment: Treatment;
+  treatment_meta: TreatmentMeta;
+}> {
+  const treatment = t.treatment ?? "normal";
+  if (treatment !== "split") {
+    return [{
+      id: t.id,
+      date: t.date,
+      name: t.name,
+      amount: t.amount,
+      treatment,
+      treatment_meta: t.treatment_meta ?? {},
+    }];
+  }
+  const parts = t.treatment_meta?.parts ?? [];
+  return parts.map((p, i) => ({
+    id: t.id,
+    partIndex: i,
+    partLabel: p.label,
+    date: t.date,
+    name: t.name,
+    amount: p.amount,
+    treatment: p.treatment,
+    treatment_meta: p.meta ?? {},
+  }));
 }
 
 export function treatmentLabel(t: TxnLike): string | null {
@@ -110,6 +184,10 @@ export function treatmentLabel(t: TxnLike): string | null {
         return `Amortized · ${t.date.slice(0, 4)} (Jan–Dec)`;
       }
       return `Amortized · ${meta.months ?? 12} mo`;
+    }
+    case "split": {
+      const n = (meta.parts ?? []).length;
+      return `Split into ${n} part${n === 1 ? "" : "s"}`;
     }
     default:
       return null;

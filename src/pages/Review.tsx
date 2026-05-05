@@ -27,37 +27,75 @@ const Review = () => {
   const [personFilter, setPersonFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  // Pending splits (people owe me)
+  // Pending splits (people owe me) — includes both whole-txn reimbursables AND
+  // sub-parts of "split" transactions whose part is reimbursable + pending.
   const { data: splits = [] } = useQuery({
     queryKey: ["review", "reimbursable_pending"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
         .select("id,date,name,amount,treatment,treatment_meta")
-        .eq("treatment", "reimbursable")
+        .in("treatment", ["reimbursable", "split"])
         .order("date", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return ((data ?? []) as Txn[]).filter(
-        (t) => (t.treatment_meta?.reimbursement_status ?? "pending") === "pending",
-      );
+      const out: (Txn & { partIndex?: number; partLabel?: string; partAmount?: number })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "reimbursable") {
+          if ((row.treatment_meta?.reimbursement_status ?? "pending") === "pending") {
+            out.push(row);
+          }
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "reimbursable") return;
+            if ((p.meta?.reimbursement_status ?? "pending") !== "pending") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              partIndex: i,
+              partLabel: p.label,
+              partAmount: p.amount,
+              amount: p.amount,
+            });
+          });
+        }
+      }
+      return out;
     },
   });
 
-  // Pending refundables
+  // Pending refundables (whole-txn + split parts)
   const { data: refunds = [] } = useQuery({
     queryKey: ["review", "refundable_pending"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
         .select("id,date,name,amount,treatment,treatment_meta")
-        .eq("treatment", "refundable")
+        .in("treatment", ["refundable", "split"])
         .order("date", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return ((data ?? []) as Txn[]).filter(
-        (t) => (t.treatment_meta?.refund_status ?? "pending") === "pending",
-      );
+      const out: (Txn & { partIndex?: number; partLabel?: string })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "refundable") {
+          if ((row.treatment_meta?.refund_status ?? "pending") === "pending") out.push(row);
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "refundable") return;
+            if ((p.meta?.refund_status ?? "pending") !== "pending") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              amount: p.amount,
+              partIndex: i,
+              partLabel: p.label,
+            });
+          });
+        }
+      }
+      return out;
     },
   });
 
@@ -72,7 +110,7 @@ const Review = () => {
 
   // Group splits by person
   const grouped = useMemo(() => {
-    const map = new Map<string, { person: string; txns: Txn[]; total: number }>();
+    const map = new Map<string, { person: string; txns: typeof splits; total: number }>();
     splits.forEach((t) => {
       const person = (t.treatment_meta?.owed_by || "Unassigned").trim() || "Unassigned";
       const share =
@@ -105,12 +143,34 @@ const Review = () => {
 
   const totalOwed = visibleGroups.reduce((s, g) => s + g.total, 0);
 
-  async function markSettled(t: Txn) {
-    const meta = { ...(t.treatment_meta ?? {}), reimbursement_status: "settled" as const };
-    const { error } = await supabase
-      .from("transactions")
-      .update({ treatment_meta: meta })
-      .eq("id", t.id);
+  // For split-part rows, we need to fetch the parent txn meta and update only the part.
+  async function applyStatus(
+    t: Txn & { partIndex?: number },
+    field: "reimbursement_status" | "refund_status",
+    value: "settled" | "received",
+  ) {
+    if (typeof t.partIndex === "number") {
+      const { data: parent } = await supabase
+        .from("transactions")
+        .select("treatment_meta")
+        .eq("id", t.id)
+        .single();
+      const parentMeta: TreatmentMeta = (parent?.treatment_meta ?? {}) as TreatmentMeta;
+      const parts = [...(parentMeta.parts ?? [])];
+      const p = parts[t.partIndex];
+      if (!p) return { error: { message: "Part not found" } };
+      parts[t.partIndex] = { ...p, meta: { ...(p.meta ?? {}), [field]: value } };
+      return supabase
+        .from("transactions")
+        .update({ treatment_meta: { ...parentMeta, parts } })
+        .eq("id", t.id);
+    }
+    const meta = { ...(t.treatment_meta ?? {}), [field]: value };
+    return supabase.from("transactions").update({ treatment_meta: meta }).eq("id", t.id);
+  }
+
+  async function markSettled(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "reimbursement_status", "settled");
     if (error) toast.error(error.message);
     else {
       toast.success("Marked settled");
@@ -118,22 +178,16 @@ const Review = () => {
     }
   }
 
-  async function markGroupSettled(group: { person: string; txns: Txn[] }) {
-    const ids = group.txns.map((t) => t.id);
+  async function markGroupSettled(group: { person: string; txns: (Txn & { partIndex?: number })[] }) {
     for (const t of group.txns) {
-      const meta = { ...(t.treatment_meta ?? {}), reimbursement_status: "settled" as const };
-      await supabase.from("transactions").update({ treatment_meta: meta }).eq("id", t.id);
+      await applyStatus(t, "reimbursement_status", "settled");
     }
-    toast.success(`Marked ${ids.length} settled with ${group.person}`);
+    toast.success(`Marked ${group.txns.length} settled with ${group.person}`);
     qc.invalidateQueries({ queryKey: ["review"] });
   }
 
-  async function markRefundReceived(t: Txn) {
-    const meta = { ...(t.treatment_meta ?? {}), refund_status: "received" as const };
-    const { error } = await supabase
-      .from("transactions")
-      .update({ treatment_meta: meta })
-      .eq("id", t.id);
+  async function markRefundReceived(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "refund_status", "received");
     if (error) toast.error(error.message);
     else {
       toast.success("Marked refunded");
@@ -247,9 +301,17 @@ const Review = () => {
                       : total;
                   const owed = total - share;
                   return (
-                    <div key={t.id} className="flex items-center gap-3 py-2 text-sm">
+                    <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
-                      <span className="flex-1 truncate">{t.name}</span>
+                      <span className="flex-1 truncate">
+                        {t.name}
+                        {(t as any).partLabel && (
+                          <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
+                        )}
+                        {typeof (t as any).partIndex === "number" && !(t as any).partLabel && (
+                          <span className="text-muted-foreground text-xs ml-1">· part {(t as any).partIndex + 1}</span>
+                        )}
+                      </span>
                       <span className="text-muted-foreground text-xs">
                         Your {fmtCurrency(share)} of {fmtCurrency(total)}
                       </span>
