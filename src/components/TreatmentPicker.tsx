@@ -25,7 +25,12 @@ const OPTIONS: { value: Treatment; label: string; desc: string; icon: any }[] = 
   { value: "refundable", label: "Refundable", desc: "Money you expect back", icon: AlertCircle },
   { value: "reimbursable", label: "Split / reimbursable", desc: "Someone owes you part", icon: Users },
   { value: "amortized", label: "Amortize", desc: "Spread across months", icon: CalendarClock },
+  { value: "split", label: "Split into parts", desc: "Mix multiple treatments on one charge", icon: Split },
 ];
+
+function defaultPart(amount: number): SplitPart {
+  return { amount: Math.abs(amount), treatment: "normal", meta: {} };
+}
 
 export function TreatmentPicker({ treatment, meta, amount, date, onSave, className, size = "sm" }: Props) {
   const [open, setOpen] = useState(false);
