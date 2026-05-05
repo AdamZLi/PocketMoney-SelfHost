@@ -35,6 +35,10 @@
     --warning: 38 92% 50%;
     --warning-foreground: 0 0% 100%;
 
+    --confidence-high: 158 64% 40%;
+    --confidence-medium: 38 92% 50%;
+    --confidence-low: 0 84% 55%;
+
     --border: 220 13% 91%;
     --input: 220 13% 91%;
     --ring: 158 64% 35%;
