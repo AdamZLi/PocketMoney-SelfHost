@@ -40,6 +40,8 @@ const PALETTE = [
 const NEUTRAL = "hsl(var(--muted-foreground) / 0.25)";
 
 type Row = {
+  id: string;
+  name: string;
   date: string;
   amount: number;
   excluded: boolean;
@@ -75,6 +77,7 @@ const Trends = () => {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showRaw, setShowRaw] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -110,7 +113,7 @@ const Trends = () => {
       for (let from = 0; ; from += PAGE) {
         let q = supabase
           .from("transactions")
-          .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+          .select("id,name,date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
           .gte("date", fetchFrom)
           .lte("date", range.to)
           .order("date", { ascending: true })
@@ -462,6 +465,12 @@ const Trends = () => {
                   data={chartData}
                   margin={{ top: 24, right: 8, bottom: 8, left: 0 }}
                   barCategoryGap="28%"
+                  onClick={(e: any) => {
+                    const lbl = e?.activeLabel;
+                    if (!lbl) return;
+                    const row = chartData.find((r: any) => r.label === lbl);
+                    if (row?.month) setSelectedMonth(row.month);
+                  }}
                 >
                   <CartesianGrid
                     strokeDasharray="2 4"
@@ -566,8 +575,138 @@ const Trends = () => {
           </>
         )}
       </section>
+
+      <MonthBreakdown
+        month={selectedMonth}
+        rows={rows}
+        showRaw={showRaw}
+        onClose={() => setSelectedMonth(null)}
+      />
     </div>
   );
 };
+
+function MonthBreakdown({
+  month,
+  rows,
+  showRaw,
+  onClose,
+}: {
+  month: string | null;
+  rows: Row[];
+  showRaw: boolean;
+  onClose: () => void;
+}) {
+  const breakdown = useMemo(() => {
+    if (!month) return null;
+    type Item = { id: string; name: string; date: string; amount: number; note?: string };
+    const byCat = new Map<string, { total: number; items: Item[] }>();
+    let total = 0;
+    for (const r of rows) {
+      const cat = r.categories?.parent_category || r.categories?.name || "Uncategorized";
+      let v = 0;
+      let note: string | undefined;
+      if (showRaw) {
+        if (monthKey(r.date) !== month) continue;
+        const a = Number(r.amount);
+        if (!isFinite(a) || a <= 0) continue;
+        v = a;
+      } else {
+        v = effectiveMonthlyContribution(
+          {
+            date: r.date,
+            amount: Number(r.amount),
+            treatment: (r.treatment as any) ?? "normal",
+            treatment_meta: r.treatment_meta ?? {},
+            linked_txn_id: r.linked_txn_id,
+            excluded: r.excluded,
+          },
+          month,
+        );
+        if (v <= 0) continue;
+        if (monthKey(r.date) !== month) {
+          note = `from ${monthFull(monthKey(r.date))}`;
+        }
+      }
+      const cur = byCat.get(cat) ?? { total: 0, items: [] };
+      cur.total += v;
+      cur.items.push({ id: r.id, name: r.name, date: r.date, amount: v, note });
+      byCat.set(cat, cur);
+      total += v;
+    }
+    const cats = [...byCat.entries()]
+      .map(([name, v]) => ({
+        name,
+        total: v.total,
+        items: v.items.sort((a, b) => b.amount - a.amount),
+      }))
+      .sort((a, b) => b.total - a.total);
+    return { total, cats };
+  }, [month, rows, showRaw]);
+
+  if (!month || !breakdown) return null;
+
+  return (
+    <section className="mt-14 pt-10 border-t border-border/60">
+      <div className="flex items-end justify-between mb-6 gap-4">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Breakdown</p>
+          <h2 className="text-2xl font-medium tracking-tight mt-2">{monthFull(month)}</h2>
+          <p className="text-sm text-muted-foreground mt-1 tabular-nums">
+            {fmtCurrency(breakdown.total)} total · {breakdown.cats.length} categories
+          </p>
+        </div>
+        <Button variant="ghost" size="sm" onClick={onClose} className="text-muted-foreground">
+          <X className="h-3.5 w-3.5 mr-1" /> Close
+        </Button>
+      </div>
+
+      {breakdown.cats.length === 0 ? (
+        <p className="text-sm text-muted-foreground">No spending in this month.</p>
+      ) : (
+        <div className="space-y-8">
+          {breakdown.cats.map((c) => (
+            <div key={c.name}>
+              <div className="flex items-baseline justify-between border-b border-border/50 pb-2 mb-3">
+                <h3 className="text-sm font-medium">{c.name}</h3>
+                <div className="text-sm tabular-nums">
+                  {fmtCurrency(c.total)}
+                  <span className="text-xs text-muted-foreground ml-2">
+                    {breakdown.total > 0
+                      ? `${((c.total / breakdown.total) * 100).toFixed(0)}%`
+                      : ""}
+                  </span>
+                </div>
+              </div>
+              <ul className="divide-y divide-border/40">
+                {c.items.map((it, idx) => (
+                  <li
+                    key={`${it.id}-${idx}`}
+                    className="flex items-center justify-between py-2 text-sm"
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <span className="text-xs text-muted-foreground tabular-nums w-16 shrink-0">
+                        {fmtDate(it.date)}
+                      </span>
+                      <span className="truncate">{it.name}</span>
+                      {it.note && (
+                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
+                          · {it.note}
+                        </span>
+                      )}
+                    </div>
+                    <span className="tabular-nums text-foreground/90 ml-3">
+                      {fmtCurrency(it.amount)}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
 
 export default Trends;
