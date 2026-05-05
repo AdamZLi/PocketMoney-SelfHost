@@ -1309,43 +1309,85 @@ const Transactions = () => {
       </div>
 
       {/* Table */}
-      <div>
-        <div className="grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3 text-xs text-muted-foreground border-b">
-          <Checkbox
-            checked={txns.length > 0 && selected.size === txns.length}
-            onCheckedChange={(v) => toggleAll(!!v)}
-          />
-          <button
-            type="button"
-            onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
-            className="inline-flex items-center gap-1 hover:text-foreground text-left"
-          >
-            Date {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
-          </button>
-          <span>Merchant</span>
-          <span>Category</span>
-          <span>Treatment</span>
-          <span>Reviewed</span>
-          <span className="text-right">Amount</span>
-        </div>
+      {(() => {
+        const GRID = "grid-cols-[24px_1fr_180px_140px_110px_120px]";
+        // Group by month then by date.
+        const months = new Map<string, { label: string; total: number; days: Map<string, any[]> }>();
+        for (const t of txns as any[]) {
+          const mk = String(t.date).slice(0, 7);
+          const [y, mm] = mk.split("-").map(Number);
+          if (!months.has(mk)) {
+            months.set(mk, {
+              label: new Date(y, mm - 1, 1).toLocaleDateString("en-US", { month: "long", year: "numeric" }),
+              total: 0,
+              days: new Map(),
+            });
+          }
+          const entry = months.get(mk)!;
+          if (!t.excluded) entry.total += Number(t.amount);
+          const dk = String(t.date).slice(0, 10);
+          if (!entry.days.has(dk)) entry.days.set(dk, []);
+          entry.days.get(dk)!.push(t);
+        }
 
-        <div>
-          {(txns as any[]).map((t) => {
-            const isSelected = selected.has(t.id);
-            return (
-              <div
-                key={t.id}
-                className={`group grid grid-cols-[24px_100px_1fr_180px_140px_110px_120px] gap-4 px-2 py-3.5 border-b border-border/50 items-center transition-colors ${
-                  isSelected ? "bg-muted/40" : "hover:bg-muted/20"
-                } ${t.excluded ? "opacity-50" : ""}`}
+        const today = new Date(); today.setHours(0, 0, 0, 0);
+        const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+        const dayLabel = (dk: string) => {
+          const [y, m, d] = dk.split("-").map(Number);
+          const dt = new Date(y, m - 1, d);
+          if (dt.getTime() === today.getTime()) return "Today";
+          if (dt.getTime() === yesterday.getTime()) return "Yesterday";
+          return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+        };
+
+        return (
+          <div>
+            <div className={`grid ${GRID} gap-4 px-2 py-3 text-xs text-muted-foreground border-b`}>
+              <Checkbox
+                checked={txns.length > 0 && selected.size === txns.length}
+                onCheckedChange={(v) => toggleAll(!!v)}
+              />
+              <button
+                type="button"
+                onClick={() => setSortDir(d => d === "asc" ? "desc" : "asc")}
+                className="inline-flex items-center gap-1 hover:text-foreground text-left"
               >
-                <Checkbox
-                  checked={isSelected}
-                  onCheckedChange={(v) => toggleOne(t.id, !!v)}
-                  className={isSelected ? "" : "opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity"}
-                />
-                <span className="text-sm text-muted-foreground tabular-nums">{fmtDate(t.date)}</span>
-                <div className="min-w-0">
+                Merchant {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
+              </button>
+              <span>Category</span>
+              <span>Treatment</span>
+              <span>Reviewed</span>
+              <span className="text-right">Amount</span>
+            </div>
+
+            {[...months.entries()].map(([mk, m]) => (
+              <div key={mk} className="mt-8 first:mt-4">
+                <div className="flex items-baseline justify-between px-2 pb-3 border-b border-border/60">
+                  <h2 className="text-2xl font-semibold tracking-tight">{m.label}</h2>
+                  <span className="text-base font-semibold tabular-nums">{fmtCurrency(m.total)}</span>
+                </div>
+                {[...m.days.entries()].map(([dk, rows]) => (
+                  <div key={dk}>
+                    <div className="px-2 pt-5 pb-2">
+                      <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                        {dayLabel(dk)}
+                      </span>
+                    </div>
+                    {rows.map((t: any) => {
+                      const isSelected = selected.has(t.id);
+                      return (
+                        <div
+                          key={t.id}
+                          className={`group grid ${GRID} gap-4 px-2 py-3 border-b border-border/40 items-center transition-colors ${
+                            isSelected ? "bg-muted/40" : "hover:bg-muted/20"
+                          } ${t.excluded ? "opacity-50" : ""}`}
+                        >
+                          <Checkbox
+                            checked={isSelected}
+                            onCheckedChange={(v) => toggleOne(t.id, !!v)}
+                            className={isSelected ? "" : "opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity"}
+                          />
+                          <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-medium truncate">{t.name}</span>
                     {t.status === "pending" && (
@@ -1431,14 +1473,19 @@ const Transactions = () => {
                     </div>
                   );
                 })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            );
-          })}
-          {txns.length === 0 && (
-            <div className="py-20 text-center text-sm text-muted-foreground">No transactions match.</div>
-          )}
-        </div>
-      </div>
+            ))}
+            {txns.length === 0 && (
+              <div className="py-20 text-center text-sm text-muted-foreground">No transactions match.</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Floating bulk action bar */}
       {selected.size > 0 && (
