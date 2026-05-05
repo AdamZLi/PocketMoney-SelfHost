@@ -418,32 +418,37 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
 
                   {part.treatment === "reimbursable" && (
                     <div className="space-y-1.5">
-                      <div className="flex gap-2">
-                        <Input
-                          type="number"
-                          step="0.01"
-                          placeholder="Your share"
-                          value={
-                            typeof part.meta?.your_share === "number"
-                              ? part.meta.your_share
-                              : Math.abs(part.amount) / 2
-                          }
-                          onChange={(e) =>
-                            updatePartMeta(i, { your_share: parseFloat(e.target.value) })
-                          }
-                          className="h-7 text-xs"
-                        />
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="h-7 text-xs"
-                          onClick={() =>
-                            updatePartMeta(i, { your_share: Math.abs(part.amount) / 2 })
-                          }
-                        >
-                          Half
-                        </Button>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        placeholder="Your share"
+                        value={
+                          typeof part.meta?.your_share === "number"
+                            ? part.meta.your_share
+                            : Math.abs(part.amount) / 2
+                        }
+                        onChange={(e) =>
+                          updatePartMeta(i, { your_share: parseFloat(e.target.value) })
+                        }
+                        className="h-7 text-xs"
+                      />
+                      <div className="flex gap-1">
+                        {[25, 50, 75].map((pct) => (
+                          <Button
+                            key={pct}
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="h-6 text-[11px] flex-1 px-1"
+                            onClick={() =>
+                              updatePartMeta(i, {
+                                your_share: +(Math.abs(part.amount) * (pct / 100)).toFixed(2),
+                              })
+                            }
+                          >
+                            {pct}%
+                          </Button>
+                        ))}
                       </div>
                       <OwedByCombobox
                         value={part.meta?.owed_by ?? ""}
