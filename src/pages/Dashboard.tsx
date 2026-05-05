@@ -1,19 +1,25 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
-import { fmtCurrency, fmtDate, fmtMonthYear } from "@/lib/format";
+import { fmtCurrency, fmtMonthYear } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingDown, Wallet, Tag, ArrowUpRight } from "lucide-react";
-import { Link } from "react-router-dom";
-import { effectiveMonthlyContribution } from "@/lib/treatments";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
+import { TrendingDown, Wallet, Tag, ArrowUpRight, Pencil } from "lucide-react";
+import { Link, useNavigate } from "react-router-dom";
+import { effectiveMonthlyContribution, type Treatment, type TreatmentMeta } from "@/lib/treatments";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { TreatmentPicker } from "@/components/TreatmentPicker";
+import { toast } from "@/hooks/use-toast";
 
 const Dashboard = () => {
+  const qc = useQueryClient();
+  const navigate = useNavigate();
   const now = new Date();
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().slice(0, 10);
 
   const { data: txns = [] } = useQuery({
     queryKey: ["txns", "month", monthStart],
     queryFn: async () => {
-      // Look back 24 months to capture amortized purchases that contribute to this month.
       const lookback = new Date(now.getFullYear(), now.getMonth() - 24, 1).toISOString().slice(0, 10);
       const { data, error } = await supabase
         .from("transactions")
@@ -25,18 +31,54 @@ const Dashboard = () => {
     },
   });
 
+  const { data: categories = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () => (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
+  });
+
   const { data: recent = [] } = useQuery({
-    queryKey: ["txns", "recent"],
+    queryKey: ["txns", "recent-to-review"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
-        .select("id,date,name,amount,categories(name,color),accounts(name,mask)")
+        .select("id,date,name,amount,reviewed,reviewed_at,treatment,treatment_meta,category_id,categories(name,color),accounts(name,mask)")
+        .eq("reviewed", false)
         .order("date", { ascending: false })
         .limit(25);
       if (error) throw error;
       return data ?? [];
     },
   });
+
+  async function updateField(id: string, field: string, oldVal: any, newVal: any) {
+    const { error } = await supabase.from("transactions").update({ [field]: newVal } as any).eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: field, old_value: oldVal, new_value: newVal,
+    });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
+  async function updateTreatment(id: string, treatment: Treatment, meta: TreatmentMeta) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ treatment, treatment_meta: meta as any } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: "treatment", old_value: null, new_value: treatment,
+    });
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
+
+  async function toggleReviewed(id: string, next: boolean) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["txns"] });
+  }
 
   const monthIso = monthStart.slice(0, 7);
   let total = 0;
@@ -131,7 +173,12 @@ const Dashboard = () => {
 
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
-          <CardTitle>Recent transactions</CardTitle>
+          <div>
+            <CardTitle>Recent transactions to review</CardTitle>
+            <p className="text-xs text-muted-foreground mt-1">
+              Latest unreviewed transactions. Check them off as you go.
+            </p>
+          </div>
           <Link
             to="/transactions"
             className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
@@ -141,7 +188,7 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No transactions yet.</p>
+            <p className="text-sm text-muted-foreground">All caught up — nothing left to review.</p>
           ) : (
             (() => {
               const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -159,6 +206,7 @@ const Dashboard = () => {
                 if (!days.has(dk)) days.set(dk, []);
                 days.get(dk)!.push(t);
               }
+              const GRID = "grid-cols-[24px_1fr_180px_140px_120px_28px]";
               return (
                 <div>
                   {[...days.entries()].map(([dk, rows]) => (
@@ -171,18 +219,46 @@ const Dashboard = () => {
                       {rows.map((t: any) => (
                         <div
                           key={t.id}
-                          className="grid grid-cols-[1fr_auto] gap-4 px-1 py-2.5 border-b border-border/40 items-center"
+                          className={`group grid ${GRID} gap-4 px-1 py-2.5 border-b border-border/40 items-center hover:bg-muted/20 transition-colors`}
                         >
+                          <Checkbox
+                            checked={!!t.reviewed}
+                            onCheckedChange={(v) => toggleReviewed(t.id, !!v)}
+                            title="Mark as reviewed"
+                          />
                           <div className="min-w-0">
                             <div className="text-sm font-medium truncate">{t.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {t.accounts?.name ?? "—"}{t.accounts?.mask ? ` ····${t.accounts.mask}` : ""}
-                              {t.categories?.name ? ` · ${t.categories.name}` : ""}
-                            </div>
+                            {t.accounts?.name && (
+                              <div className="text-xs text-muted-foreground mt-0.5 truncate">
+                                {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
+                              </div>
+                            )}
                           </div>
+                          <CategoryCombobox
+                            value={t.category_id}
+                            categories={categories as any}
+                            onChange={(v) => updateField(t.id, "category_id", t.category_id, v)}
+                          />
+                          <TreatmentPicker
+                            treatment={(t.treatment ?? "normal") as Treatment}
+                            meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                            amount={Number(t.amount)}
+                            date={t.date}
+                            onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                          />
                           <div className="text-sm font-medium tabular-nums text-right">
                             {fmtCurrency(Number(t.amount))}
                           </div>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                            onClick={() => navigate(`/transactions?edit=${t.id}`)}
+                            title="Edit transaction"
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </Button>
                         </div>
                       ))}
                     </div>
