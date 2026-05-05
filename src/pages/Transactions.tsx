@@ -1213,69 +1213,133 @@ const Transactions = () => {
             </>
           )}
 
-          {scanStage === "preview" && (
-            <>
-              <div className="px-6 pt-6 pb-2">
-                <h2 className="text-lg font-semibold">Review proposed changes</h2>
-                <p className="text-sm text-muted-foreground">
-                  {previewItems.length === 0
-                    ? "No category changes are needed."
-                    : `${previewItems.length - excludedFromPreview.size} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. Uncheck any you'd like to skip.`}
-                </p>
-              </div>
-              {previewItems.length > 0 && (
-                <ScrollArea className="flex-1 px-6">
-                  <div className="divide-y">
-                    {previewItems.map((p) => {
-                      const checked = !excludedFromPreview.has(p.txnId);
-                      const oldName = p.oldCategoryId
-                        ? ((categories as any[]).find((c) => c.id === p.oldCategoryId)?.name ?? "—")
-                        : "Uncategorized";
-                      return (
-                        <label
-                          key={p.txnId}
-                          className="flex items-center gap-3 py-2.5 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => {
-                              setExcludedFromPreview((prev) => {
-                                const next = new Set(prev);
-                                if (v) next.delete(p.txnId);
-                                else next.add(p.txnId);
-                                return next;
-                              });
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm truncate">{p.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {oldName} → <span className="text-foreground/80">{p.newCategoryName}</span>
-                            </div>
+          {scanStage === "preview" && (() => {
+            const buckets: Array<{
+              key: "high" | "medium" | "low";
+              label: string;
+              dot: string;
+              ring: string;
+              items: PreviewItem[];
+            }> = [
+              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high") },
+              { key: "medium", label: "Medium confidence", dot: "bg-confidence-medium", ring: "border-confidence-medium/30", items: previewItems.filter((p) => p.bucket === "medium") },
+              { key: "low", label: "Low confidence", dot: "bg-confidence-low", ring: "border-confidence-low/30", items: previewItems.filter((p) => p.bucket === "low") },
+            ];
+            const oldCatName = (id: string | null) =>
+              id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
+            const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
+            const selectedCount = previewItems.length - excludedFromPreview.size;
+            return (
+              <>
+                <div className="px-6 pt-6 pb-2">
+                  <h2 className="text-lg font-semibold">Review proposed changes</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {previewItems.length === 0
+                      ? "No changes proposed."
+                      : `${selectedCount} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. High-confidence items will be marked reviewed automatically.`}
+                  </p>
+                </div>
+                {previewItems.length > 0 && (
+                  <ScrollArea className="flex-1 px-6">
+                    <div className="space-y-4 pb-4">
+                      {buckets.map((b) => {
+                        if (b.items.length === 0) return null;
+                        const collapsed = bucketsCollapsed[b.key];
+                        return (
+                          <div key={b.key} className={`rounded-lg border ${b.ring}`}>
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                              onClick={() => setBucketsCollapsed((prev) => ({ ...prev, [b.key]: !prev[b.key] }))}
+                            >
+                              <span className={`h-2 w-2 rounded-full ${b.dot}`} />
+                              <span className="text-sm font-medium">{b.label}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {b.items.length} item{b.items.length === 1 ? "" : "s"}
+                              </span>
+                              {b.key === "high" && (
+                                <Badge variant="secondary" className="ml-1 text-[10px] uppercase tracking-wide">
+                                  Auto ✓
+                                </Badge>
+                              )}
+                              {b.key !== "high" && (
+                                <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wide">
+                                  Needs review
+                                </Badge>
+                              )}
+                              <span className="ml-auto text-xs text-muted-foreground">{collapsed ? "Show" : "Hide"}</span>
+                            </button>
+                            {!collapsed && (
+                              <div className="divide-y border-t">
+                                {b.items.map((p) => {
+                                  const checked = !excludedFromPreview.has(p.txnId);
+                                  const oldCat = oldCatName(p.oldCategoryId);
+                                  const catChanged = p.newCategoryId !== p.oldCategoryId;
+                                  const trChanged = p.newTreatment !== p.oldTreatment;
+                                  return (
+                                    <label key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 cursor-pointer">
+                                      <Checkbox
+                                        className="mt-0.5"
+                                        checked={checked}
+                                        onCheckedChange={(v) => {
+                                          setExcludedFromPreview((prev) => {
+                                            const next = new Set(prev);
+                                            if (v) next.delete(p.txnId);
+                                            else next.add(p.txnId);
+                                            return next;
+                                          });
+                                        }}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-sm truncate">{p.name}</div>
+                                          <div className="text-xs tabular-nums text-muted-foreground">
+                                            {fmtCurrency(p.amount)}
+                                          </div>
+                                        </div>
+                                        {catChanged && (
+                                          <div className="text-xs text-muted-foreground truncate">
+                                            <span className="opacity-70">Category:</span>{" "}
+                                            {oldCat} → <span className="text-foreground/90">{p.newCategoryName}</span>
+                                          </div>
+                                        )}
+                                        {trChanged && (
+                                          <div className="text-xs text-muted-foreground truncate">
+                                            <span className="opacity-70">Treatment:</span>{" "}
+                                            {treatmentLabelShort(p.oldTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
+                                          </div>
+                                        )}
+                                        {p.reason && (
+                                          <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
+                                            {p.source === "rule" ? "Rule match" : `AI · ${Math.round(p.confidence * 100)}%`} — {p.reason}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <Badge variant={p.source === "rule" ? "secondary" : "outline"} className="text-[10px] uppercase tracking-wide">
-                            {p.source}
-                          </Badge>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              )}
-              <div className="border-t px-6 py-4 bg-background">
-                <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
-                <Button
-                  onClick={applyScanPreview}
-                  disabled={previewItems.length - excludedFromPreview.size === 0}
-                  className="gap-2"
-                >
-                  Apply {previewItems.length - excludedFromPreview.size} change{previewItems.length - excludedFromPreview.size === 1 ? "" : "s"}
-                </Button>
-              </div>
-            </>
-          )}
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+                <div className="border-t px-6 py-4 bg-background flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
+                  <Button
+                    onClick={applyScanPreview}
+                    disabled={selectedCount === 0}
+                    className="gap-2 ml-auto"
+                  >
+                    Apply {selectedCount} change{selectedCount === 1 ? "" : "s"}
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
 
-          {scanStage === "applying" && (
             <>
               <div className="px-6 pt-6 pb-2">
                 <h2 className="text-lg font-semibold">Applying changes…</h2>
