@@ -138,6 +138,71 @@ const Transactions = () => {
     }
   }
 
+  function openDetails(t: any) {
+    setDetailsId(t.id);
+    setDetailsOriginalName(t.name);
+    setDetailsDraft({
+      name: t.name ?? "",
+      date: t.date ?? "",
+      note: t.note ?? "",
+    });
+  }
+
+  async function saveDetails() {
+    if (!detailsId) return;
+    const t = (txns as any[]).find((x) => x.id === detailsId);
+    if (!t) return;
+    const updates: Record<string, any> = {};
+    const edits: { field_changed: string; old_value: any; new_value: any }[] = [];
+    const newName = detailsDraft.name.trim();
+    if (newName && newName !== t.name) {
+      updates.name = newName;
+      edits.push({ field_changed: "name", old_value: t.name, new_value: newName });
+    }
+    if (detailsDraft.date && detailsDraft.date !== t.date) {
+      updates.date = detailsDraft.date;
+      edits.push({ field_changed: "date", old_value: t.date, new_value: detailsDraft.date });
+    }
+    const newNote = detailsDraft.note ?? "";
+    if ((t.note ?? "") !== newNote) {
+      updates.note = newNote || null;
+      edits.push({ field_changed: "note", old_value: t.note, new_value: newNote || null });
+    }
+    if (Object.keys(updates).length === 0) {
+      setDetailsId(null);
+      return;
+    }
+    setSavingDetails(true);
+    try {
+      const { error } = await supabase.from("transactions").update(updates as any).eq("id", detailsId);
+      if (error) throw error;
+      if (edits.length > 0) {
+        await supabase.from("transaction_edits").insert(edits.map((e) => ({ transaction_id: detailsId, ...e })));
+      }
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      toast({ title: "Transaction updated" });
+      // If the name changed, optionally offer the alias prompt as before.
+      if (updates.name) {
+        const { count } = await supabase
+          .from("transactions")
+          .select("id", { count: "exact", head: true })
+          .ilike("name", detailsOriginalName)
+          .neq("id", detailsId);
+        const matchCount = count ?? 0;
+        setDetailsId(null);
+        if (matchCount > 0) {
+          setAliasPrompt({ oldName: detailsOriginalName, newName: updates.name, matchCount });
+        }
+      } else {
+        setDetailsId(null);
+      }
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingDetails(false);
+    }
+  }
+
   async function submitRename() {
     if (!renameTarget) return;
     const newName = renameValue.trim();
