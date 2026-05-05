@@ -1382,6 +1382,63 @@ const Transactions = () => {
           </div>
         </div>
       )}
+
+      {/* Rename merchant dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o && !renaming) setRenameTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit merchant name</DialogTitle>
+            <DialogDescription>
+              Rename this transaction's merchant. You'll then be asked whether to save it as an alias and apply to other matching transactions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label className="text-xs text-muted-foreground">Original</Label>
+            <div className="text-sm text-muted-foreground truncate">{renameTarget?.oldName}</div>
+            <Label className="text-xs text-muted-foreground pt-2">New name</Label>
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submitRename(); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</Button>
+            <Button size="sm" onClick={submitRename} disabled={renaming || !renameValue.trim()}>
+              {renaming ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alias prompt */}
+      <Dialog open={!!aliasPrompt} onOpenChange={(o) => { if (!o && !creatingAlias) setAliasPrompt(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as merchant alias?</DialogTitle>
+            <DialogDescription>
+              Create an alias so future imports matching <span className="font-medium text-foreground">{aliasPrompt?.oldName}</span> are automatically displayed as <span className="font-medium text-foreground">{aliasPrompt?.newName}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground py-2">
+            {aliasPrompt?.matchCount === 0
+              ? "No other transactions currently share this merchant name."
+              : `${aliasPrompt?.matchCount} other transaction${aliasPrompt?.matchCount === 1 ? "" : "s"} share this merchant name.`}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setAliasPrompt(null)} disabled={creatingAlias}>
+              Don't save
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => createAliasAndApply(false)} disabled={creatingAlias}>
+              Save alias only
+            </Button>
+            <Button size="sm" onClick={() => createAliasAndApply(true)} disabled={creatingAlias || !aliasPrompt?.matchCount}>
+              {creatingAlias ? "Applying…" : `Save & apply to ${aliasPrompt?.matchCount ?? 0}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
