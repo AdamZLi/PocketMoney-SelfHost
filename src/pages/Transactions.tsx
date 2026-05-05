@@ -142,6 +142,7 @@ const Transactions = () => {
 
   function openDetails(t: any) {
     setDetailsId(t.id);
+    setDetailsRecord(t);
     setDetailsOriginalName(t.name);
     setDetailsDraft({
       name: t.name ?? "",
