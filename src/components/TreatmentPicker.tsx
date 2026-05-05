@@ -91,9 +91,9 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
       </PopoverTrigger>
       <PopoverContent
         align="end"
-        className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-hidden p-0"
+        className="flex max-h-[var(--radix-popover-content-available-height)] w-80 flex-col overflow-hidden p-0"
       >
-        <div className="max-h-[min(var(--radix-popover-content-available-height),600px)] overflow-y-auto overscroll-contain p-3">
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3">
           <div className="space-y-1.5 mb-3">
             {OPTIONS.map((o) => {
               const Icon = o.icon;
@@ -266,14 +266,14 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           </div>
         )}
 
-          <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
-            <Button variant="ghost" size="sm" className="h-8" onClick={() => setOpen(false)}>
-              Cancel
-            </Button>
-            <Button size="sm" className="h-8" onClick={handleSave}>
-              Save
-            </Button>
-          </div>
+        </div>
+        <div className="flex shrink-0 justify-end gap-2 border-t bg-popover p-3">
+          <Button variant="ghost" size="sm" className="h-8" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button size="sm" className="h-8" onClick={handleSave}>
+            Save
+          </Button>
         </div>
       </PopoverContent>
     </Popover>
