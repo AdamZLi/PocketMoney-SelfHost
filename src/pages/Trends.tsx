@@ -465,6 +465,12 @@ const Trends = () => {
                   data={chartData}
                   margin={{ top: 24, right: 8, bottom: 8, left: 0 }}
                   barCategoryGap="28%"
+                  onClick={(e: any) => {
+                    const lbl = e?.activeLabel;
+                    if (!lbl) return;
+                    const row = chartData.find((r: any) => r.label === lbl);
+                    if (row?.month) setSelectedMonth(row.month);
+                  }}
                 >
                   <CartesianGrid
                     strokeDasharray="2 4"
