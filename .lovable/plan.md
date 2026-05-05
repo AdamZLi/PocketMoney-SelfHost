@@ -1,159 +1,188 @@
-# Handling non-recurring expenses
+# AI Review Agent — Plan
 
-The core idea: add an explicit **treatment** to each transaction that tells trends/budgets _how_ to count it, not just _whether_. Today there's only a binary `excluded` flag — that's too blunt for the cases you described.
+## Goal
 
-## The five treatments
+Replace the current "suggest categories" flow with a dedicated **AI Review Agent** that, for each transaction in the scan:
 
-| Treatment                  | What it means                                    | Example                   | Trend impact                                                                        |
-| -------------------------- | ------------------------------------------------ | ------------------------- | ----------------------------------------------------------------------------------- |
-| **Normal**                 | Default, counts in the month it occurred         | Groceries                 | Full amount, that month                                                             |
-| **Excluded (one-off)**     | Real cash out, but not part of "lifestyle spend" | Wedding gift, moving fee  | Hidden from trends/budget; visible in transactions                                  |
-| **Refundable**             | Money you expect back in full                    | Security deposit          | Hidden from trends; tracked in a "Pending refund" pile until matched                |
-| **Reimbursable / split**   | You paid, but someone owes you part or all       | Group dinner, work travel | Only your share counts in trends; remainder goes to follow-up pile                  |
-| **Amortize over N months** | Lumpy purchase smoothed across months            | Annual flight, hotel      | Spread evenly across N months in trends; raw transaction hidden from monthly totals |
+1. Proposes a **category** (from the user's taxonomy)
+2. Proposes a **treatment** (`normal`, `excluded`, `refundable`, `reimbursable`, `amortized`) with the meta needed to apply it
+3. Returns a **confidence score 0–1** with brief reasoning
+4. Learns from the user's accept/reject choices so future suggestions improve
 
-Plus a **"refund of …"** link: when a credit hits your account that looks like a refund of an existing charge, auto-detect and propose linking them; the linked pair nets to zero in trends.
+The preview panel groups proposals into **High / Medium / Low** confidence buckets, auto-marks high-confidence items as reviewed, and lets the user one-click expand each bucket to verify or override.
 
-## User experience
+---
 
-### A. Tagging a transaction (the main flow)
+## 1. Agent specification (for your review BEFORE implementation)
 
-On any transaction row, next to the category dropdown, a small **"Treatment"** chip:
+Two new docs in `docs/agents/`:
 
-```text
- Date     Merchant        Category    Treatment        Amount
- Mar 12   United Airlines Travel      [ Normal  ▾ ]    -$840.00
-```
+### `docs/agents/review-agent.md`
 
-Click the chip → a compact popover (not a full dialog) opens with the five options as cards. Pick one → an inline mini-form appears for that treatment's details:
+- Mission, scope, inputs/outputs
+- Confidence rubric (high ≥0.9, medium 0.5–0.9, low <0.5) with concrete examples
+- Treatment decision rules (when to suggest refundable vs reimbursable vs amortized vs normal vs excluded)
+- Learning loop: how `transaction_edits` + a new `agent_feedback` table feed back into the prompt
+- Failure / fallback behavior (null category, "normal" treatment as safe default)
 
-- **Refundable** → one field: "Expected refund date" (optional). Done.
-- **Split / reimbursable** → two fields: "Your share" (amount or %) + "Owed by" (free text name). Auto-suggests 50% as a starting point.
-- **Amortize** → one field: "Spread over [12] months starting [Mar 2026]". Live preview underneath: "≈ $70/mo Mar 2026 → Feb 2027".
-- **Excluded** → optional "Reason" note.
+### `docs/agents/review-agent.system-prompt.md`
 
-Save → the chip on the row updates to a colored pill: `Refundable · pending`, `Split · $40 of $120`, `Amortized · 12 mo`. The amount in the row is struck through and the **effective monthly amount** is shown beside it in muted text. No page reload, just the row re-renders.
-
-A toast offers: _"Always treat United Airlines as amortized over 12 months? [Yes, remember]"_ — same pattern as the existing categorization rule prompt.
-
-### B. Bulk action
-
-Same treatment picker is available from the bulk-edit toolbar that already appears when rows are selected. Useful for tagging an entire trip's worth of transactions at once.
-
-### C. Follow-up pile (the "Review" badge)
-
-The amber **Review** badge in the Transactions toolbar (already there for duplicates) becomes a tabbed drawer when clicked:
+The full system prompt the edge function will send. Draft outline:
 
 ```text
- ┌─ Review ───────────────────────────────────────────┐
- │  [ Duplicates 2 ] [ Refunds 3 ] [ Owed to me 4 ]   │
- │                                                     │
- │  Refundable · pending                               │
- │  ──────────────────────────────────────────────     │
- │  Jan 4   Greystar Apartments        $2,400.00       │
- │  "Security deposit"                                 │
- │           [ Mark refunded ] [ Link to txn ] [ ✕ ]   │
- │                                                     │
- │  Feb 18  Airbnb                       $350.00       │
- │           [ Mark refunded ] [ Link to txn ] [ ✕ ]   │
- └─────────────────────────────────────────────────────┘
+You are the Review Agent — a specialized personal-finance review assistant.
+For each transaction you receive, return:
+  - category_id (from the provided taxonomy, or null)
+  - treatment ("normal" | "excluded" | "refundable" | "reimbursable" | "amortized")
+  - treatment_meta (only the fields the chosen treatment needs)
+  - confidence (0..1)
+  - reason (≤140 chars, plain language)
+
+Confidence rubric:
+  ≥ 0.90  Strong evidence: exact merchant match in user history, or
+          unambiguous brand (Netflix, Uber, Whole Foods…). Auto-applies.
+  0.50–0.89 Plausible but ambiguous merchant or amount pattern. Needs review.
+  < 0.50  Unknown merchant, no history, conflicting signals. Needs review.
+
+Treatment heuristics:
+  refundable    — large purchase from retailer with return policy, recent date,
+                  user history shows similar pattern returned
+  reimbursable  — work travel, group dinners, shared subscriptions
+  amortized     — annual subscriptions, insurance premiums, travel, large purchase
+  excluded      — internal transfers, credit-card payments, stock buys
+  split         — split with friends on group activities, rent, large appliances
+  normal        — default
+
+Learning input you receive:
+  - past_corrections: list of {merchant, ai_suggested, user_chose, field}
+  - user_treatments_history: how often this merchant was given each treatment
+
+Hard rules:
+  - Only return category_ids from the provided list.
+  - Never invent treatments outside the enum.
+  - If unsure on category, return null and confidence ≤ 0.4.
+  - Output exactly via the submit_review tool call. No prose.
 ```
 
-- **Mark refunded / settled** → clears the follow-up flag; if the user picked "Link to txn" first, the two transactions are linked and net to zero.
-- **✕** → cancel follow-up (treats as resolved without a linked refund).
-- Items older than 30 days get a small "30d+" pill so they're easy to spot.
+You'll review and edit both files; implementation begins only after sign-off.
 
-### D. Refund auto-detection
+---
 
-When a credit (positive amount) lands on import, the existing duplicate-review card on the import page gains a new section:
+## 2. Backend — new edge function
+
+`supabase/functions/review-transactions/index.ts`
+
+- Replaces `suggest-categories` for the scan flow (old function kept for backward compat for now).
+- Inputs:
+  - `transactions`: `{id, name, amount, date, account_id}[]`
+  - `categories`: full taxonomy
+  - `existing`: per-txn `{category_id, treatment, treatment_meta}` so the agent can decide whether to propose a *change*
+- Pulls per-txn context server-side:
+  - Recent `transaction_edits` for the same merchant (what the user changed last time)
+  - Past treatments distribution for that merchant
+  - Recent `agent_feedback` rows (see below)
+- Calls Lovable AI Gateway (`google/gemini-3-flash-preview` default; configurable) with a `submit_review` tool whose schema includes `category_id`, `treatment`, `treatment_meta`, `confidence`, `reason`.
+- Validates output (enum check, valid category id, treatment_meta fields match the chosen treatment), and clamps confidence.
+- Returns `{ proposals: [...], skipped: [...] }`.
+
+### Schema migration
+
+New table `agent_feedback`:
+
+
+| col            | type                                           |
+| -------------- | ---------------------------------------------- |
+| id             | uuid pk                                        |
+| transaction_id | uuid                                           |
+| merchant_name  | text                                           |
+| field          | text (`category` or `treatment`)               |
+| ai_value       | jsonb                                          |
+| ai_confidence  | numeric                                        |
+| user_action    | text (`accepted` / `overridden` / `dismissed`) |
+| user_value     | jsonb (null if accepted)                       |
+| created_at     | timestamptz default now()                      |
+
+
+Open RLS (matches existing project pattern).
+
+This table is what the agent reads on subsequent runs to "remember" user preferences.
+
+---
+
+## 3. Frontend — preview UI changes
+
+In `src/pages/Transactions.tsx` scan panel, the **preview stage** becomes:
 
 ```text
- ┌─ Possible refunds detected ─────────────────────────┐
- │  Mar 20  Best Buy        +$129.00                   │
- │  Looks like a refund of:                            │
- │   Mar 5  Best Buy        -$129.00 (Electronics)     │
- │  [ Link as refund ] [ Not a refund ]                │
- └─────────────────────────────────────────────────────┘
+┌─ Preview proposed changes ──────────────────────┐
+│ 122 transactions reviewed by AI                 │
+│                                                 │
+│  ● High confidence   80 items   [auto-marked ✓] │  ← green
+│     ▸ Click to expand and verify                │
+│                                                 │
+│  ● Medium confidence 30 items   [needs review]  │  ← yellow
+│     ▾ expanded list of rows shown               │
+│        ☐ Trader Joe's   $42  Groceries · normal │
+│        ☐ Best Buy      $610  Electronics ·     │
+│                              refundable (45d)   │
+│                                                 │
+│  ● Low confidence    12 items   [needs review]  │  ← red
+│     ▾ expanded list                             │
+│                                                 │
+│  [ Apply 122 changes ]   [ Back ]               │
+└─────────────────────────────────────────────────┘
 ```
 
-Linking marks the original as `refunded` and they net to zero in trends. Both rows still appear in the transaction log so the audit trail is intact.
+- Buckets are collapsible; high-confidence is collapsed by default, medium + low expanded by default.
+- Each row shows: merchant, amount, **category change** (`old → new`), **treatment change** (`old → new`), and a one-line AI reason on hover.
+- Each row has a checkbox. High-confidence items default checked + `reviewed=true` on apply. Medium/low default checked but `reviewed=false`, so the user is nudged to look at them after.
+- Per-row inline edit: click the proposed category or treatment to override before applying.
 
-For older transactions (already in the DB), a **"Detect refunds"** button on the Transactions page runs the same heuristic over the last 90 days and surfaces a preview-then-apply card (same pattern as the AI scan).
+Bucket colors come from semantic tokens (no hardcoded colors). Plan adds these tokens to `index.css`:
 
-### E. Trends page changes
+- `--confidence-high` (green family)
+- `--confidence-medium` (amber)
+- `--confidence-low` (red)
+…with matching `bg-*/10` surfaces and `text-*` foregrounds.
 
-A subtle legend control above the chart:
+---
 
-```text
- Spending by month            [Show one-off & amortized: ◯ Off]
-```
+## 4. Apply step
 
-When **off** (default): trends show only normal + your-share + amortized slices. The huge United Airlines spike disappears and instead becomes a quiet $70/mo bump across 12 months.
+When the user clicks **Apply**:
 
-When **on**: trends show raw amounts so power users can sanity-check.
+For each accepted proposal:
 
-Hovering a month tooltip shows a breakdown:
+1. Update `transactions` with new `category_id`, `treatment`, `treatment_meta`, and `reviewed = (bucket === "high")`, `reviewed_at = now()`.
+2. Insert into `transaction_edits` (existing audit trail).
+3. Insert into `agent_feedback` with `user_action = "accepted"` (or `"overridden"` if the user changed the AI value before applying, capturing both `ai_value` and `user_value`).
+4. Skipped (unchecked) items get `agent_feedback` with `user_action = "dismissed"`.
 
-```text
- March 2026
- Normal spend       $2,140
- Amortized          $   70   (United Airlines, 1 of 12)
- ─────────────────────────
- Total              $2,210
-```
+This is what closes the learning loop.
 
-### F. Visual language summary
+---
 
-| State                | Where it shows           | Style                                                          |
-| -------------------- | ------------------------ | -------------------------------------------------------------- |
-| Treatment chip       | Transaction row          | Small pill, neutral when "Normal", colored + icon for others   |
-| Excluded from trends | Transaction row amount   | Strikethrough on raw amount, effective amount shown next to it |
-| Follow-up needed     | Toolbar badge + row icon | Amber, with count                                              |
-| Linked refund        | Both rows                | Small chain-link icon; clicking jumps to the partner           |
+## 5. Toolbar & wording
 
-## What gets built (technical)
+- Button label stays **"AI scan & review"**.
+- Summary stage shows breakdown: `High 80 · Medium 30 · Low 12 · Overridden 5`.
 
-### 1. Schema
+---
 
-- `transactions.treatment` enum: `normal | excluded | refundable | reimbursable | amortized`
-- `transactions.treatment_meta` jsonb — per-treatment fields (expected refund, your share, owed by, months, start date, reason)
-- `transactions.linked_txn_id` (nullable self-FK) for refund pairs
-- `transactions.review_kind` enum on the existing `needs_review` flag: `duplicate | refund_pending | reimbursement_pending` so the follow-up pile is one unified queue
-- Migrate existing `excluded = true` → `treatment = 'excluded'`
+## Technical notes
 
-### 2. Single source of truth for trends
+- New files:
+  - `docs/agents/review-agent.md`
+  - `docs/agents/review-agent.system-prompt.md`
+  - `supabase/functions/review-transactions/index.ts`
+- Migration: `agent_feedback` table + open RLS.
+- Edited: `src/pages/Transactions.tsx` (scan panel preview + apply), `src/index.css` (confidence tokens), `tailwind.config.ts` (expose tokens).
+- `src/lib/treatments.ts` already defines the `Treatment` enum and meta — agent output reuses it directly.
+- Old `suggest-categories` function is kept untouched for now; we can delete it in a follow-up once the new flow is verified.
 
-Helper `effectiveMonthlyContribution(txn, monthIso)` in `src/lib/trends.ts`:
+---
 
-- `normal` → full amount in `date`'s month
-- `excluded` / `refundable` → 0
-- `reimbursable` → `your_share` in that month
-- `amortized` → `amount/months` for each month between `start_date` and `start_date + N`
-- Linked refund pairs → 0 on both sides
+## Deliverable order after approval
 
-Both Trends and Dashboard import this helper; nothing else touches the rule.
-
-### 3. UI surfaces
-
-- Treatment popover component (reused on row + bulk toolbar)
-- Refund-suggestion card on Import + standalone "Detect refunds" preview on Transactions
-- Tabbed Review drawer replacing the current single-purpose duplicate filter
-- Trends legend toggle + month-breakdown tooltip
-
-### 4. Amortization in SQL is awkward — done client-side in the trends aggregator. Fine for our data sizes.
-
-## What I'd ship first vs. later
-
-**Phase 1 (MVP):** treatments, row-level picker, trends/dashboard rewrite, follow-up tabs with mark-settled.
-
-**Phase 2:** refund auto-detection (import + standalone) and "remember this treatment for merchant" rules.
-
-**Phase 3:** multi-person splits, reminders for stale follow-ups, dashboard widgets for "money owed to you".
-
-## Open questions worth deciding
-
-1. **Amortization direction** — forward only (Jan flight → Jan–Dec), or also backward? Forward is simpler and matches typical budgeting tools.
-2. **Refundable visibility in trends** — hide entirely (default) or show as a separate "pending outflow" line until refunded?
-3. **Default amortization period** — 12 months or prompt the user every time? I'd default to 12 with one click to change.
-
-## 5. AI agent to also decide on the treatment plan?
+1. Write `docs/agents/review-agent.md` + `review-agent.system-prompt.md` and **stop for your review**.
+2. After you sign off on the agent doc, run the migration, build the edge function, then update the Transactions UI.
