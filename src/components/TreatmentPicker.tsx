@@ -295,6 +295,207 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           );
         })()}
 
+        {draft === "split" && (() => {
+          const total = Math.abs(amount);
+          const parts: SplitPart[] = draftMeta.parts && draftMeta.parts.length > 0
+            ? draftMeta.parts
+            : [
+                { amount: total / 2, treatment: "normal", meta: {} },
+                { amount: total / 2, treatment: "normal", meta: {} },
+              ];
+          const sum = parts.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+          const remaining = total - sum;
+          const updateParts = (next: SplitPart[]) =>
+            setDraftMeta({ ...draftMeta, parts: next });
+          const updatePart = (i: number, patch: Partial<SplitPart>) =>
+            updateParts(parts.map((p, idx) => (idx === i ? { ...p, ...patch } : p)));
+          const updatePartMeta = (i: number, patch: Partial<TreatmentMeta>) =>
+            updateParts(
+              parts.map((p, idx) =>
+                idx === i ? { ...p, meta: { ...(p.meta ?? {}), ...patch } } : p,
+              ),
+            );
+
+          return (
+            <div className="space-y-3 border-t pt-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs text-muted-foreground">
+                  Total ${total.toFixed(2)} · Remaining{" "}
+                  <span className={cn(Math.abs(remaining) > 0.01 ? "text-amber-600 font-medium" : "")}>
+                    ${remaining.toFixed(2)}
+                  </span>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 text-xs"
+                  onClick={() =>
+                    updateParts([
+                      ...parts,
+                      { amount: Math.max(0, remaining), treatment: "normal", meta: {} },
+                    ])
+                  }
+                >
+                  <Plus className="h-3 w-3 mr-1" /> Add part
+                </Button>
+              </div>
+
+              {parts.map((part, i) => (
+                <div key={i} className="rounded-md border p-2 space-y-2 bg-muted/20">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      placeholder={`Part ${i + 1} label (optional)`}
+                      value={part.label ?? ""}
+                      onChange={(e) => updatePart(i, { label: e.target.value })}
+                      className="h-7 text-xs flex-1"
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                      onClick={() => updateParts(parts.filter((_, idx) => idx !== i))}
+                      disabled={parts.length <= 2}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Amount</Label>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={part.amount}
+                        onChange={(e) =>
+                          updatePart(i, { amount: parseFloat(e.target.value) || 0 })
+                        }
+                        className="h-7 text-xs mt-0.5"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-[10px] text-muted-foreground">Treatment</Label>
+                      <select
+                        value={part.treatment}
+                        onChange={(e) =>
+                          updatePart(i, {
+                            treatment: e.target.value as SplitPart["treatment"],
+                            meta: {},
+                          })
+                        }
+                        className="mt-0.5 h-7 w-full rounded-md border bg-background text-xs px-2"
+                      >
+                        <option value="normal">Normal</option>
+                        <option value="excluded">Excluded</option>
+                        <option value="refundable">Refundable</option>
+                        <option value="reimbursable">Reimbursable</option>
+                        <option value="amortized">Amortized</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {part.treatment === "refundable" && (
+                    <Input
+                      type="date"
+                      value={part.meta?.expected_refund_date ?? ""}
+                      onChange={(e) =>
+                        updatePartMeta(i, { expected_refund_date: e.target.value })
+                      }
+                      className="h-7 text-xs"
+                    />
+                  )}
+
+                  {part.treatment === "reimbursable" && (
+                    <div className="space-y-1.5">
+                      <div className="flex gap-2">
+                        <Input
+                          type="number"
+                          step="0.01"
+                          placeholder="Your share"
+                          value={
+                            typeof part.meta?.your_share === "number"
+                              ? part.meta.your_share
+                              : Math.abs(part.amount) / 2
+                          }
+                          onChange={(e) =>
+                            updatePartMeta(i, { your_share: parseFloat(e.target.value) })
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-7 text-xs"
+                          onClick={() =>
+                            updatePartMeta(i, { your_share: Math.abs(part.amount) / 2 })
+                          }
+                        >
+                          Half
+                        </Button>
+                      </div>
+                      <OwedByCombobox
+                        value={part.meta?.owed_by ?? ""}
+                        onChange={(v) => updatePartMeta(i, { owed_by: v })}
+                      />
+                    </div>
+                  )}
+
+                  {part.treatment === "amortized" && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Months</Label>
+                        <Input
+                          type="number"
+                          min={1}
+                          value={part.meta?.months ?? 12}
+                          onChange={(e) =>
+                            updatePartMeta(i, {
+                              amort_mode: "custom",
+                              months: parseInt(e.target.value) || 12,
+                            })
+                          }
+                          className="h-7 text-xs mt-0.5"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[10px] text-muted-foreground">Start month</Label>
+                        <Input
+                          type="month"
+                          value={(part.meta?.start_date ?? date).slice(0, 7)}
+                          onChange={(e) =>
+                            updatePartMeta(i, {
+                              amort_mode: "custom",
+                              start_date: e.target.value,
+                            })
+                          }
+                          className="h-7 text-xs mt-0.5"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {part.treatment === "excluded" && (
+                    <Input
+                      placeholder="Reason (optional)"
+                      value={part.meta?.reason ?? ""}
+                      onChange={(e) => updatePartMeta(i, { reason: e.target.value })}
+                      className="h-7 text-xs"
+                    />
+                  )}
+                </div>
+              ))}
+
+              {Math.abs(remaining) > 0.01 && (
+                <p className="text-[11px] text-amber-600">
+                  Parts must sum to ${total.toFixed(2)}. Adjust amounts before saving.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+
         {draft === "excluded" && (
           <div className="space-y-2 border-t pt-3">
             <div>
