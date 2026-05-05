@@ -53,6 +53,42 @@ export type Database = {
         }
         Relationships: []
       }
+      agent_feedback: {
+        Row: {
+          ai_confidence: number | null
+          ai_value: Json | null
+          created_at: string
+          field: string
+          id: string
+          merchant_name: string | null
+          transaction_id: string | null
+          user_action: string
+          user_value: Json | null
+        }
+        Insert: {
+          ai_confidence?: number | null
+          ai_value?: Json | null
+          created_at?: string
+          field: string
+          id?: string
+          merchant_name?: string | null
+          transaction_id?: string | null
+          user_action: string
+          user_value?: Json | null
+        }
+        Update: {
+          ai_confidence?: number | null
+          ai_value?: Json | null
+          created_at?: string
+          field?: string
+          id?: string
+          merchant_name?: string | null
+          transaction_id?: string | null
+          user_action?: string
+          user_value?: Json | null
+        }
+        Relationships: []
+      }
       categories: {
         Row: {
           color: string | null

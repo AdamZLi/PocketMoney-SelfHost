@@ -64,9 +64,16 @@ const Transactions = () => {
   type PreviewItem = {
     txnId: string;
     name: string;
+    amount: number;
     oldCategoryId: string | null;
-    newCategoryId: string;
+    newCategoryId: string | null;
     newCategoryName: string;
+    oldTreatment: Treatment;
+    newTreatment: Treatment;
+    newTreatmentMeta: TreatmentMeta;
+    confidence: number; // 0..1
+    bucket: "high" | "medium" | "low";
+    reason: string;
     source: "rule" | "ai";
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
@@ -76,6 +83,7 @@ const Transactions = () => {
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
+  const [bucketsCollapsed, setBucketsCollapsed] = useState<Record<"high" | "medium" | "low", boolean>>({ high: true, medium: false, low: false });
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
 
@@ -592,8 +600,8 @@ const Transactions = () => {
   }
 
   // Step 1: build a preview of changes without writing anything to the DB.
-  // Rule-based matches always take precedence; the AI agent only sees
-  // merchants that no rule could resolve.
+  // Rule-based category matches always take precedence; the AI Review Agent
+  // sees the rest and proposes both category AND treatment with a confidence.
   async function buildScanPreview() {
     if (scanning) return;
     setScanning(true);
@@ -604,7 +612,7 @@ const Transactions = () => {
     try {
       let q = supabase
         .from("transactions")
-        .select("id,name,category_id")
+        .select("id,name,amount,date,category_id,treatment,treatment_meta,account_id,accounts(name)")
         .eq("excluded", false);
       if (scanReviewed === "unreviewed") q = q.eq("reviewed", false);
       else if (scanReviewed === "reviewed") q = q.eq("reviewed", true);
@@ -612,16 +620,15 @@ const Transactions = () => {
       if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
       else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
       if (scanMonth) {
-        // scanMonth is YYYY-MM
         const [y, m] = scanMonth.split("-").map(Number);
         const start = `${scanMonth}-01`;
-        const endDate = new Date(y, m, 1); // first day of next month
+        const endDate = new Date(y, m, 1);
         const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-01`;
         q = q.gte("date", start).lt("date", end);
       }
       const { data: pending, error } = await q;
       if (error) throw error;
-      const list = (pending ?? []) as { id: string; name: string; category_id: string | null }[];
+      const list = (pending ?? []) as any[];
       setScanTotalConsidered(list.length);
       if (list.length === 0) {
         toast({ title: "Nothing to scan", description: "No transactions match the selected filters." });
@@ -633,43 +640,56 @@ const Transactions = () => {
         .from("category_rules")
         .select("id,category_id,match_type,pattern,priority");
       const rules: Rule[] = (ruleRows ?? []) as any;
-      const catName = (id: string) =>
-        (categories as any[]).find((c) => c.id === id)?.name ?? "Unknown";
+      const catName = (id: string | null) =>
+        id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "Unknown") : "Uncategorized";
 
       const items: PreviewItem[] = [];
-      const byName = new Map<string, { id: string; name: string; category_id: string | null }[]>();
+      const remaining: any[] = [];
 
       for (const t of list) {
         const cat = applyRules(t.name, rules);
+        const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
         if (cat) {
           if (cat !== t.category_id) {
             items.push({
               txnId: t.id,
               name: t.name,
+              amount: Number(t.amount) || 0,
               oldCategoryId: t.category_id,
               newCategoryId: cat,
               newCategoryName: catName(cat),
+              oldTreatment,
+              newTreatment: oldTreatment,
+              newTreatmentMeta: (t.treatment_meta ?? {}) as TreatmentMeta,
+              confidence: 1,
+              bucket: "high",
+              reason: "Matched a saved category rule.",
               source: "rule",
             });
           }
         } else {
-          const key = t.name.trim().toLowerCase();
-          if (!byName.has(key)) byName.set(key, []);
-          byName.get(key)!.push(t);
+          remaining.push(t);
         }
       }
 
-      const remaining = [...byName.values()].map((g) => g[0]);
       setScanProgress({ done: 0, total: remaining.length });
 
-      const CHUNK = 50;
+      const CHUNK = 25;
       for (let i = 0; i < remaining.length; i += CHUNK) {
         const chunk = remaining.slice(i, i + CHUNK);
         const { data: aiData, error: aiErr } = await supabase.functions.invoke(
-          "suggest-categories",
+          "review-transactions",
           {
             body: {
-              merchants: chunk.map((m) => ({ id: m.id, name: m.name })),
+              transactions: chunk.map((t: any) => ({
+                id: t.id,
+                name: t.name,
+                amount: Number(t.amount) || 0,
+                date: t.date,
+                current_category_id: t.category_id,
+                current_treatment: t.treatment,
+                account_name: t.accounts?.name ?? null,
+              })),
               categories: (categories as any[]).map((c) => ({
                 id: c.id,
                 name: c.name,
@@ -679,29 +699,42 @@ const Transactions = () => {
           },
         );
         if (aiErr) {
-          toast({ title: "AI scan paused", description: aiErr.message, variant: "destructive" });
+          toast({ title: "AI review paused", description: aiErr.message, variant: "destructive" });
           break;
         }
-        const suggestions: { id: string; category_id: string | null }[] =
-          aiData?.suggestions ?? [];
+        const proposals: Array<{
+          id: string;
+          category_id: string | null;
+          treatment: Treatment;
+          treatment_meta: TreatmentMeta;
+          confidence: number;
+          reason: string;
+        }> = aiData?.proposals ?? [];
 
-        for (const s of suggestions) {
-          if (!s.category_id) continue;
-          const repr = chunk.find((m) => m.id === s.id);
-          if (!repr) continue;
-          const groupKey = repr.name.trim().toLowerCase();
-          const group = byName.get(groupKey) ?? [repr];
-          for (const t of group) {
-            if (t.category_id === s.category_id) continue;
-            items.push({
-              txnId: t.id,
-              name: t.name,
-              oldCategoryId: t.category_id,
-              newCategoryId: s.category_id,
-              newCategoryName: catName(s.category_id),
-              source: "ai",
-            });
-          }
+        for (const p of proposals) {
+          const t = chunk.find((x: any) => x.id === p.id);
+          if (!t) continue;
+          const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
+          const categoryChanged = p.category_id !== t.category_id;
+          const treatmentChanged = p.treatment !== oldTreatment;
+          if (!categoryChanged && !treatmentChanged) continue;
+          const c = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          const bucket: PreviewItem["bucket"] = c >= 0.9 ? "high" : c >= 0.5 ? "medium" : "low";
+          items.push({
+            txnId: t.id,
+            name: t.name,
+            amount: Number(t.amount) || 0,
+            oldCategoryId: t.category_id,
+            newCategoryId: p.category_id,
+            newCategoryName: catName(p.category_id),
+            oldTreatment,
+            newTreatment: p.treatment,
+            newTreatmentMeta: p.treatment_meta ?? {},
+            confidence: c,
+            bucket,
+            reason: p.reason ?? "",
+            source: "ai",
+          });
         }
         setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
       }
@@ -727,29 +760,76 @@ const Transactions = () => {
     setScanning(true);
     setScanProgress({ done: 0, total: toApply.length });
     try {
-      const byCat = new Map<string, PreviewItem[]>();
-      for (const p of toApply) {
-        if (!byCat.has(p.newCategoryId)) byCat.set(p.newCategoryId, []);
-        byCat.get(p.newCategoryId)!.push(p);
-      }
       let done = 0;
-      for (const [catId, group] of byCat) {
-        const ids = group.map((g) => g.txnId);
-        const { error: upErr } = await supabase
-          .from("transactions")
-          .update({ category_id: catId } as any)
-          .in("id", ids);
-        if (upErr) throw upErr;
-        await supabase.from("transaction_edits").insert(
-          group.map((g) => ({
-            transaction_id: g.txnId,
-            field_changed: "category_id",
-            old_value: g.oldCategoryId,
-            new_value: catId,
-          })),
-        );
-        done += ids.length;
+      for (const p of toApply) {
+        const updates: Record<string, any> = {};
+        const edits: Array<{ field_changed: string; old_value: any; new_value: any }> = [];
+        if (p.newCategoryId !== p.oldCategoryId) {
+          updates.category_id = p.newCategoryId;
+          edits.push({ field_changed: "category_id", old_value: p.oldCategoryId, new_value: p.newCategoryId });
+        }
+        if (p.newTreatment !== p.oldTreatment) {
+          updates.treatment = p.newTreatment;
+          updates.treatment_meta = p.newTreatmentMeta ?? {};
+          updates.excluded = p.newTreatment === "excluded";
+          edits.push({ field_changed: "treatment", old_value: p.oldTreatment, new_value: p.newTreatment });
+        }
+        // High-confidence items are auto-marked reviewed.
+        if (p.bucket === "high") {
+          updates.reviewed = true;
+          updates.reviewed_at = new Date().toISOString();
+        }
+        if (Object.keys(updates).length > 0) {
+          const { error: upErr } = await supabase.from("transactions").update(updates as any).eq("id", p.txnId);
+          if (upErr) throw upErr;
+          if (edits.length > 0) {
+            await supabase.from("transaction_edits").insert(
+              edits.map((e) => ({ transaction_id: p.txnId, ...e })),
+            );
+          }
+        }
+        // Learning loop: record acceptance for AI-sourced proposals.
+        if (p.source === "ai") {
+          await supabase.from("agent_feedback").insert([
+            {
+              transaction_id: p.txnId,
+              merchant_name: p.name.trim().toLowerCase(),
+              field: "category",
+              ai_value: { category_id: p.newCategoryId },
+              ai_confidence: p.confidence,
+              user_action: "accepted",
+              user_value: null,
+            },
+            {
+              transaction_id: p.txnId,
+              merchant_name: p.name.trim().toLowerCase(),
+              field: "treatment",
+              ai_value: { treatment: p.newTreatment, meta: p.newTreatmentMeta },
+              ai_confidence: p.confidence,
+              user_action: "accepted",
+              user_value: null,
+            },
+          ]);
+        }
+        done += 1;
         setScanProgress({ done, total: toApply.length });
+      }
+      // Record dismissals (unchecked AI items) for the learning loop.
+      const dismissed = previewItems.filter((p) => excludedFromPreview.has(p.txnId) && p.source === "ai");
+      if (dismissed.length > 0) {
+        await supabase.from("agent_feedback").insert(
+          dismissed.flatMap((p) => [
+            {
+              transaction_id: p.txnId,
+              merchant_name: p.name.trim().toLowerCase(),
+              field: "category",
+              ai_value: { category_id: p.newCategoryId },
+              ai_confidence: p.confidence,
+              user_action: "dismissed",
+              user_value: null,
+            },
+          ]),
+        );
       }
       setLastApplied(toApply);
       setScanStage("summary");
@@ -763,33 +843,21 @@ const Transactions = () => {
     }
   }
 
-  // Revert: restore each previously-changed transaction to its prior category.
+  // Revert: restore each previously-changed transaction to its prior category + treatment.
   async function revertLastScan() {
     if (!lastApplied || lastApplied.length === 0) return;
     setReverting(true);
     try {
-      const byOld = new Map<string | null, string[]>();
       for (const p of lastApplied) {
-        const k = p.oldCategoryId;
-        if (!byOld.has(k)) byOld.set(k, []);
-        byOld.get(k)!.push(p.txnId);
-      }
-      for (const [oldCat, ids] of byOld) {
-        const { error } = await supabase
-          .from("transactions")
-          .update({ category_id: oldCat } as any)
-          .in("id", ids);
-        if (error) throw error;
-        await supabase.from("transaction_edits").insert(
-          lastApplied
-            .filter((p) => p.oldCategoryId === oldCat)
-            .map((p) => ({
-              transaction_id: p.txnId,
-              field_changed: "category_id",
-              old_value: p.newCategoryId,
-              new_value: oldCat,
-            })),
-        );
+        const updates: Record<string, any> = {};
+        if (p.newCategoryId !== p.oldCategoryId) updates.category_id = p.oldCategoryId;
+        if (p.newTreatment !== p.oldTreatment) {
+          updates.treatment = p.oldTreatment;
+          updates.excluded = p.oldTreatment === "excluded";
+        }
+        if (Object.keys(updates).length > 0) {
+          await supabase.from("transactions").update(updates as any).eq("id", p.txnId);
+        }
       }
       toast({ title: "Reverted", description: `${lastApplied.length} transaction${lastApplied.length === 1 ? "" : "s"} restored.` });
       setLastApplied(null);
@@ -1145,67 +1213,132 @@ const Transactions = () => {
             </>
           )}
 
-          {scanStage === "preview" && (
-            <>
-              <div className="px-6 pt-6 pb-2">
-                <h2 className="text-lg font-semibold">Review proposed changes</h2>
-                <p className="text-sm text-muted-foreground">
-                  {previewItems.length === 0
-                    ? "No category changes are needed."
-                    : `${previewItems.length - excludedFromPreview.size} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. Uncheck any you'd like to skip.`}
-                </p>
-              </div>
-              {previewItems.length > 0 && (
-                <ScrollArea className="flex-1 px-6">
-                  <div className="divide-y">
-                    {previewItems.map((p) => {
-                      const checked = !excludedFromPreview.has(p.txnId);
-                      const oldName = p.oldCategoryId
-                        ? ((categories as any[]).find((c) => c.id === p.oldCategoryId)?.name ?? "—")
-                        : "Uncategorized";
-                      return (
-                        <label
-                          key={p.txnId}
-                          className="flex items-center gap-3 py-2.5 cursor-pointer"
-                        >
-                          <Checkbox
-                            checked={checked}
-                            onCheckedChange={(v) => {
-                              setExcludedFromPreview((prev) => {
-                                const next = new Set(prev);
-                                if (v) next.delete(p.txnId);
-                                else next.add(p.txnId);
-                                return next;
-                              });
-                            }}
-                          />
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm truncate">{p.name}</div>
-                            <div className="text-xs text-muted-foreground truncate">
-                              {oldName} → <span className="text-foreground/80">{p.newCategoryName}</span>
-                            </div>
+          {scanStage === "preview" && (() => {
+            const buckets: Array<{
+              key: "high" | "medium" | "low";
+              label: string;
+              dot: string;
+              ring: string;
+              items: PreviewItem[];
+            }> = [
+              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high") },
+              { key: "medium", label: "Medium confidence", dot: "bg-confidence-medium", ring: "border-confidence-medium/30", items: previewItems.filter((p) => p.bucket === "medium") },
+              { key: "low", label: "Low confidence", dot: "bg-confidence-low", ring: "border-confidence-low/30", items: previewItems.filter((p) => p.bucket === "low") },
+            ];
+            const oldCatName = (id: string | null) =>
+              id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
+            const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
+            const selectedCount = previewItems.length - excludedFromPreview.size;
+            return (
+              <>
+                <div className="px-6 pt-6 pb-2">
+                  <h2 className="text-lg font-semibold">Review proposed changes</h2>
+                  <p className="text-sm text-muted-foreground">
+                    {previewItems.length === 0
+                      ? "No changes proposed."
+                      : `${selectedCount} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. High-confidence items will be marked reviewed automatically.`}
+                  </p>
+                </div>
+                {previewItems.length > 0 && (
+                  <ScrollArea className="flex-1 px-6">
+                    <div className="space-y-4 pb-4">
+                      {buckets.map((b) => {
+                        if (b.items.length === 0) return null;
+                        const collapsed = bucketsCollapsed[b.key];
+                        return (
+                          <div key={b.key} className={`rounded-lg border ${b.ring}`}>
+                            <button
+                              type="button"
+                              className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                              onClick={() => setBucketsCollapsed((prev) => ({ ...prev, [b.key]: !prev[b.key] }))}
+                            >
+                              <span className={`h-2 w-2 rounded-full ${b.dot}`} />
+                              <span className="text-sm font-medium">{b.label}</span>
+                              <span className="text-xs text-muted-foreground">
+                                {b.items.length} item{b.items.length === 1 ? "" : "s"}
+                              </span>
+                              {b.key === "high" && (
+                                <Badge variant="secondary" className="ml-1 text-[10px] uppercase tracking-wide">
+                                  Auto ✓
+                                </Badge>
+                              )}
+                              {b.key !== "high" && (
+                                <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wide">
+                                  Needs review
+                                </Badge>
+                              )}
+                              <span className="ml-auto text-xs text-muted-foreground">{collapsed ? "Show" : "Hide"}</span>
+                            </button>
+                            {!collapsed && (
+                              <div className="divide-y border-t">
+                                {b.items.map((p) => {
+                                  const checked = !excludedFromPreview.has(p.txnId);
+                                  const oldCat = oldCatName(p.oldCategoryId);
+                                  const catChanged = p.newCategoryId !== p.oldCategoryId;
+                                  const trChanged = p.newTreatment !== p.oldTreatment;
+                                  return (
+                                    <label key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 cursor-pointer">
+                                      <Checkbox
+                                        className="mt-0.5"
+                                        checked={checked}
+                                        onCheckedChange={(v) => {
+                                          setExcludedFromPreview((prev) => {
+                                            const next = new Set(prev);
+                                            if (v) next.delete(p.txnId);
+                                            else next.add(p.txnId);
+                                            return next;
+                                          });
+                                        }}
+                                      />
+                                      <div className="flex-1 min-w-0">
+                                        <div className="flex items-center justify-between gap-2">
+                                          <div className="text-sm truncate">{p.name}</div>
+                                          <div className="text-xs tabular-nums text-muted-foreground">
+                                            {fmtCurrency(p.amount)}
+                                          </div>
+                                        </div>
+                                        {catChanged && (
+                                          <div className="text-xs text-muted-foreground truncate">
+                                            <span className="opacity-70">Category:</span>{" "}
+                                            {oldCat} → <span className="text-foreground/90">{p.newCategoryName}</span>
+                                          </div>
+                                        )}
+                                        {trChanged && (
+                                          <div className="text-xs text-muted-foreground truncate">
+                                            <span className="opacity-70">Treatment:</span>{" "}
+                                            {treatmentLabelShort(p.oldTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
+                                          </div>
+                                        )}
+                                        {p.reason && (
+                                          <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
+                                            {p.source === "rule" ? "Rule match" : `AI · ${Math.round(p.confidence * 100)}%`} — {p.reason}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </label>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </div>
-                          <Badge variant={p.source === "rule" ? "secondary" : "outline"} className="text-[10px] uppercase tracking-wide">
-                            {p.source}
-                          </Badge>
-                        </label>
-                      );
-                    })}
-                  </div>
-                </ScrollArea>
-              )}
-              <div className="border-t px-6 py-4 bg-background">
-                <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
-                <Button
-                  onClick={applyScanPreview}
-                  disabled={previewItems.length - excludedFromPreview.size === 0}
-                  className="gap-2"
-                >
-                  Apply {previewItems.length - excludedFromPreview.size} change{previewItems.length - excludedFromPreview.size === 1 ? "" : "s"}
-                </Button>
-              </div>
-            </>
-          )}
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
+                )}
+                <div className="border-t px-6 py-4 bg-background flex items-center gap-2">
+                  <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
+                  <Button
+                    onClick={applyScanPreview}
+                    disabled={selectedCount === 0}
+                    className="gap-2 ml-auto"
+                  >
+                    Apply {selectedCount} change{selectedCount === 1 ? "" : "s"}
+                  </Button>
+                </div>
+              </>
+            );
+          })()}
 
           {scanStage === "applying" && (
             <>
