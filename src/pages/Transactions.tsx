@@ -72,6 +72,110 @@ const Transactions = () => {
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
 
+  // Inline merchant rename
+  const [renameTarget, setRenameTarget] = useState<{ id: string; oldName: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [aliasPrompt, setAliasPrompt] = useState<{ oldName: string; newName: string; matchCount: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [creatingAlias, setCreatingAlias] = useState(false);
+
+  async function submitRename() {
+    if (!renameTarget) return;
+    const newName = renameValue.trim();
+    if (!newName || newName === renameTarget.oldName) { setRenameTarget(null); return; }
+    setRenaming(true);
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ name: newName } as any)
+        .eq("id", renameTarget.id);
+      if (error) throw error;
+      await supabase.from("transaction_edits").insert({
+        transaction_id: renameTarget.id,
+        field_changed: "name",
+        old_value: renameTarget.oldName as any,
+        new_value: newName as any,
+      });
+      // Count other transactions with the same original name (case-insensitive).
+      const { count } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .ilike("name", renameTarget.oldName)
+        .neq("id", renameTarget.id);
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      const matchCount = count ?? 0;
+      const oldName = renameTarget.oldName;
+      setRenameTarget(null);
+      setAliasPrompt({ oldName, newName, matchCount });
+    } catch (e: any) {
+      toast({ title: "Rename failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function createAliasAndApply(applyToOthers: boolean) {
+    if (!aliasPrompt) return;
+    setCreatingAlias(true);
+    try {
+      const { oldName, newName } = aliasPrompt;
+      // Upsert an alias row keyed on the original raw merchant string.
+      const { data: existing } = await supabase
+        .from("merchant_aliases")
+        .select("id")
+        .eq("pattern", oldName)
+        .eq("match_type", "exact")
+        .limit(1);
+      if (existing && existing.length > 0) {
+        await supabase
+          .from("merchant_aliases")
+          .update({ display_name: newName, priority: 1000, source: "user" })
+          .eq("id", existing[0].id);
+      } else {
+        await supabase.from("merchant_aliases").insert({
+          pattern: oldName,
+          match_type: "exact",
+          display_name: newName,
+          priority: 1000,
+          source: "user",
+        });
+      }
+      let updated = 0;
+      if (applyToOthers) {
+        const { data: matched } = await supabase
+          .from("transactions")
+          .select("id,name")
+          .ilike("name", oldName);
+        const ids = (matched ?? []).map((m: any) => m.id);
+        if (ids.length > 0) {
+          await supabase.from("transactions").update({ name: newName } as any).in("id", ids);
+          await supabase.from("transaction_edits").insert(
+            (matched ?? []).map((m: any) => ({
+              transaction_id: m.id,
+              field_changed: "name",
+              old_value: m.name,
+              new_value: newName,
+            }))
+          );
+          updated = ids.length;
+        }
+      }
+      toast({
+        title: "Alias saved",
+        description: applyToOthers
+          ? `Updated ${updated} matching transaction${updated === 1 ? "" : "s"}.`
+          : "Future imports matching this merchant will use the new name.",
+      });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+    } catch (e: any) {
+      toast({ title: "Alias failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setCreatingAlias(false);
+      setAliasPrompt(null);
+    }
+  }
+
+
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () => (await supabase.from("accounts").select("id,name,mask").order("name")).data ?? [],
