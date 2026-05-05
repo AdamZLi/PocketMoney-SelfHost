@@ -112,7 +112,7 @@ const Trends = () => {
       for (let from = 0; ; from += PAGE) {
         let q = supabase
           .from("transactions")
-          .select("date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+          .select("id,name,date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
           .gte("date", fetchFrom)
           .lte("date", range.to)
           .order("date", { ascending: true })
