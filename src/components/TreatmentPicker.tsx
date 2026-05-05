@@ -23,7 +23,7 @@ const OPTIONS: { value: Treatment; label: string; desc: string; icon: any }[] = 
   { value: "normal", label: "Normal", desc: "Counts in trends as usual", icon: Check },
   { value: "excluded", label: "Excluded", desc: "Hide from trends entirely", icon: EyeOff },
   { value: "refundable", label: "Refundable", desc: "Money you expect back", icon: AlertCircle },
-  { value: "reimbursable", label: "Split / reimbursable", desc: "Someone owes you part", icon: Users },
+  { value: "reimbursable", label: "Split", desc: "Someone owes you part", icon: Users },
   { value: "amortized", label: "Amortize", desc: "Spread across months", icon: CalendarClock },
   { value: "split", label: "Split into parts", desc: "Mix multiple treatments on one charge", icon: Split },
 ];
