@@ -1427,6 +1427,7 @@ const Transactions = () => {
               <Checkbox
                 checked={txns.length > 0 && selected.size === txns.length}
                 onCheckedChange={(v) => toggleAll(!!v)}
+                title="Select all"
               />
               <button
                 type="button"
@@ -1437,7 +1438,6 @@ const Transactions = () => {
               </button>
               <span>Category</span>
               <span>Treatment</span>
-              <span>Reviewed</span>
               <span className="text-right">Amount</span>
             </div>
 
