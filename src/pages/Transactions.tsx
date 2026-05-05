@@ -64,9 +64,16 @@ const Transactions = () => {
   type PreviewItem = {
     txnId: string;
     name: string;
+    amount: number;
     oldCategoryId: string | null;
-    newCategoryId: string;
+    newCategoryId: string | null;
     newCategoryName: string;
+    oldTreatment: Treatment;
+    newTreatment: Treatment;
+    newTreatmentMeta: TreatmentMeta;
+    confidence: number; // 0..1
+    bucket: "high" | "medium" | "low";
+    reason: string;
     source: "rule" | "ai";
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
@@ -76,6 +83,7 @@ const Transactions = () => {
   const [previewItems, setPreviewItems] = useState<PreviewItem[]>([]);
   const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
+  const [bucketsCollapsed, setBucketsCollapsed] = useState<Record<"high" | "medium" | "low", boolean>>({ high: true, medium: false, low: false });
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
 
