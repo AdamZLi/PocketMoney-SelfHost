@@ -40,6 +40,8 @@ const PALETTE = [
 const NEUTRAL = "hsl(var(--muted-foreground) / 0.25)";
 
 type Row = {
+  id: string;
+  name: string;
   date: string;
   amount: number;
   excluded: boolean;
