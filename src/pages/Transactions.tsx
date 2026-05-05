@@ -86,6 +86,7 @@ const Transactions = () => {
 
   // Transaction details side panel
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsRecord, setDetailsRecord] = useState<any | null>(null);
   const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string; amount: string }>({ name: "", date: "", note: "", amount: "" });
   const [detailsOriginalName, setDetailsOriginalName] = useState<string>("");
   const [savingDetails, setSavingDetails] = useState(false);
