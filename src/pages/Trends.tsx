@@ -85,10 +85,18 @@ const Trends = () => {
   const [showRaw, setShowRaw] = useState(false);
   const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
+  const qc = useQueryClient();
+
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
     queryFn: async () =>
       (await supabase.from("accounts").select("id,name,mask").order("name")).data ?? [],
+  });
+
+  const { data: categoriesList = [] } = useQuery({
+    queryKey: ["categories"],
+    queryFn: async () =>
+      (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
   });
 
   const range = useMemo(() => {
