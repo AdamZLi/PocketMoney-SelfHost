@@ -77,6 +77,7 @@ const Trends = () => {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showRaw, setShowRaw] = useState(false);
+  const [selectedMonth, setSelectedMonth] = useState<string | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
