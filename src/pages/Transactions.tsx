@@ -604,11 +604,17 @@ const Transactions = () => {
         .from("transactions")
         .select("id,name,category_id")
         .eq("excluded", false);
-      if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
-      else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
+      if (scanReviewed === "unreviewed") q = q.eq("reviewed", false);
+      else if (scanReviewed === "reviewed") q = q.eq("reviewed", true);
       if (scanAccountId !== "all") q = q.eq("account_id", scanAccountId);
-      if (scanFrom) q = q.gte("date", scanFrom);
-      if (scanTo) q = q.lte("date", scanTo);
+      if (scanMonth) {
+        // scanMonth is YYYY-MM
+        const [y, m] = scanMonth.split("-").map(Number);
+        const start = `${scanMonth}-01`;
+        const endDate = new Date(y, m, 1); // first day of next month
+        const end = `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, "0")}-01`;
+        q = q.gte("date", start).lt("date", end);
+      }
       const { data: pending, error } = await q;
       if (error) throw error;
       const list = (pending ?? []) as { id: string; name: string; category_id: string | null }[];
