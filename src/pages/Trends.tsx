@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { Button } from "@/components/ui/button";
@@ -8,8 +8,12 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Calendar, X, ArrowUpRight, ArrowDownRight } from "lucide-react";
+import { Calendar, X, ArrowUpRight, ArrowDownRight, Check } from "lucide-react";
 import { Switch } from "@/components/ui/switch";
+import { CategoryCombobox } from "@/components/CategoryCombobox";
+import { TreatmentPicker } from "@/components/TreatmentPicker";
+import type { Treatment, TreatmentMeta } from "@/lib/treatments";
+import { toast } from "@/hooks/use-toast";
 import { effectiveMonthlyContribution } from "@/lib/treatments";
 import {
   ResponsiveContainer,
@@ -50,6 +54,8 @@ type Row = {
   treatment: string | null;
   treatment_meta: any;
   linked_txn_id: string | null;
+  reviewed: boolean;
+  reviewed_at: string | null;
   categories: { name: string | null; parent_category: string | null } | null;
 };
 
@@ -113,7 +119,7 @@ const Trends = () => {
       for (let from = 0; ; from += PAGE) {
         let q = supabase
           .from("transactions")
-          .select("id,name,date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,categories(name,parent_category)")
+          .select("id,name,date,amount,excluded,account_id,category_id,treatment,treatment_meta,linked_txn_id,reviewed,reviewed_at,categories(name,parent_category)")
           .gte("date", fetchFrom)
           .lte("date", range.to)
           .order("date", { ascending: true })
