@@ -1473,14 +1473,19 @@ const Transactions = () => {
                     </div>
                   );
                 })()}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
-            );
-          })}
-          {txns.length === 0 && (
-            <div className="py-20 text-center text-sm text-muted-foreground">No transactions match.</div>
-          )}
-        </div>
-      </div>
+            ))}
+            {txns.length === 0 && (
+              <div className="py-20 text-center text-sm text-muted-foreground">No transactions match.</div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Floating bulk action bar */}
       {selected.size > 0 && (
