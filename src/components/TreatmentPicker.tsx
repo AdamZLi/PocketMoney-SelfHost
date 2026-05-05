@@ -4,8 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { ChevronDown, Repeat, AlertCircle, CalendarClock, Users, EyeOff, Check } from "lucide-react";
-import { Treatment, TreatmentMeta, previewAmortization, treatmentLabel } from "@/lib/treatments";
+import { ChevronDown, Repeat, AlertCircle, CalendarClock, Users, EyeOff, Check, Split, Plus, Trash2 } from "lucide-react";
+import { Treatment, TreatmentMeta, SplitPart, previewAmortization, treatmentLabel } from "@/lib/treatments";
 import { OwedByCombobox } from "@/components/OwedByCombobox";
 import { cn } from "@/lib/utils";
 
