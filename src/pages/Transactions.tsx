@@ -609,6 +609,8 @@ const Transactions = () => {
       if (scanReviewed === "unreviewed") q = q.eq("reviewed", false);
       else if (scanReviewed === "reviewed") q = q.eq("reviewed", true);
       if (scanAccountId !== "all") q = q.eq("account_id", scanAccountId);
+      if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
+      else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
       if (scanMonth) {
         // scanMonth is YYYY-MM
         const [y, m] = scanMonth.split("-").map(Number);
