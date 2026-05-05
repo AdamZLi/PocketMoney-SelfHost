@@ -1464,9 +1464,9 @@ const Transactions = () => {
                           } ${t.excluded ? "opacity-50" : ""}`}
                         >
                           <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(v) => toggleOne(t.id, !!v)}
-                            className={isSelected ? "" : "opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity"}
+                            checked={!!t.reviewed}
+                            onCheckedChange={(v) => toggleReviewed(t.id, !!v)}
+                            title={t.reviewed && t.reviewed_at ? `Reviewed ${fmtDate(t.reviewed_at)}` : "Mark as reviewed"}
                           />
                           <div className="min-w-0">
                   <div className="flex items-center gap-2">
