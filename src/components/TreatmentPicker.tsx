@@ -89,31 +89,35 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-3 max-h-[min(80vh,600px)] overflow-y-auto">
-        <div className="space-y-1.5 mb-3">
-          {OPTIONS.map((o) => {
-            const Icon = o.icon;
-            const active = draft === o.value;
-            return (
-              <button
-                key={o.value}
-                type="button"
-                onClick={() => setDraft(o.value)}
-                className={cn(
-                  "w-full flex items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
-                  active ? "bg-accent" : "hover:bg-muted/60",
-                )}
-              >
-                <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground" />
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium">{o.label}</div>
-                  <div className="text-[11px] text-muted-foreground">{o.desc}</div>
-                </div>
-                {active && <Check className="h-3.5 w-3.5 mt-1 text-foreground" />}
-              </button>
-            );
-          })}
-        </div>
+      <PopoverContent
+        align="end"
+        className="w-80 max-h-[var(--radix-popover-content-available-height)] overflow-hidden p-0"
+      >
+        <div className="max-h-[min(var(--radix-popover-content-available-height),600px)] overflow-y-auto overscroll-contain p-3">
+          <div className="space-y-1.5 mb-3">
+            {OPTIONS.map((o) => {
+              const Icon = o.icon;
+              const active = draft === o.value;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setDraft(o.value)}
+                  className={cn(
+                    "w-full flex items-start gap-2.5 rounded-md px-2 py-1.5 text-left transition-colors",
+                    active ? "bg-accent" : "hover:bg-muted/60",
+                  )}
+                >
+                  <Icon className="h-3.5 w-3.5 mt-0.5 text-muted-foreground" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium">{o.label}</div>
+                    <div className="text-[11px] text-muted-foreground">{o.desc}</div>
+                  </div>
+                  {active && <Check className="h-3.5 w-3.5 mt-1 text-foreground" />}
+                </button>
+              );
+            })}
+          </div>
 
         {draft === "refundable" && (
           <div className="space-y-2 border-t pt-3">
@@ -262,13 +266,14 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           </div>
         )}
 
-        <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
-          <Button variant="ghost" size="sm" className="h-8" onClick={() => setOpen(false)}>
-            Cancel
-          </Button>
-          <Button size="sm" className="h-8" onClick={handleSave}>
-            Save
-          </Button>
+          <div className="flex justify-end gap-2 mt-3 pt-3 border-t">
+            <Button variant="ghost" size="sm" className="h-8" onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+            <Button size="sm" className="h-8" onClick={handleSave}>
+              Save
+            </Button>
+          </div>
         </div>
       </PopoverContent>
     </Popover>
