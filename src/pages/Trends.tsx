@@ -485,6 +485,30 @@ const Trends = () => {
                     tickLine={false}
                     axisLine={false}
                     dy={8}
+                    interval={0}
+                    tick={({ x, y, payload }: any) => {
+                      const row = chartData.find((r: any) => r.label === payload.value);
+                      const isActive = row?.month && selectedMonth === row.month;
+                      return (
+                        <g
+                          transform={`translate(${x},${y})`}
+                          style={{ cursor: "pointer" }}
+                          onClick={() => row?.month && setSelectedMonth(row.month)}
+                        >
+                          <rect x={-22} y={-2} width={44} height={20} fill="transparent" />
+                          <text
+                            x={0}
+                            y={12}
+                            textAnchor="middle"
+                            fontSize={11}
+                            fill={isActive ? "hsl(var(--foreground))" : "hsl(var(--muted-foreground))"}
+                            fontWeight={isActive ? 600 : 400}
+                          >
+                            {payload.value}
+                          </text>
+                        </g>
+                      );
+                    }}
                   />
                   <YAxis
                     stroke="hsl(var(--muted-foreground))"
