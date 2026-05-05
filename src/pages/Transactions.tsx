@@ -59,6 +59,8 @@ const Transactions = () => {
   const [scanAccountId, setScanAccountId] = useState<string>("all");
   // Month in YYYY-MM format, "" means all months
   const [scanMonth, setScanMonth] = useState<string>("");
+  // "all" = any category, "uncategorized" = null only, otherwise a category id
+  const [scanCategoryId, setScanCategoryId] = useState<string>("all");
   type PreviewItem = {
     txnId: string;
     name: string;
