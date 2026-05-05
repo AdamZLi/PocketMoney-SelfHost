@@ -1657,34 +1657,132 @@ const Transactions = () => {
         </div>
       )}
 
-      {/* Rename merchant dialog */}
-      <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o && !renaming) setRenameTarget(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit merchant name</DialogTitle>
-            <DialogDescription>
-              Rename this transaction's merchant. You'll then be asked whether to save it as an alias and apply to other matching transactions.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label className="text-xs text-muted-foreground">Original</Label>
-            <div className="text-sm text-muted-foreground truncate">{renameTarget?.oldName}</div>
-            <Label className="text-xs text-muted-foreground pt-2">New name</Label>
-            <Input
-              autoFocus
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitRename(); }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</Button>
-            <Button size="sm" onClick={submitRename} disabled={renaming || !renameValue.trim()}>
-              {renaming ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Transaction details side panel */}
+      {(() => {
+        const t = detailsId ? (txns as any[]).find((x) => x.id === detailsId) : null;
+        return (
+          <Sheet open={!!detailsId} onOpenChange={(o) => { if (!o && !savingDetails) setDetailsId(null); }}>
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Edit transaction</SheetTitle>
+                <SheetDescription>
+                  Update merchant, date, category, treatment, note, and review state without leaving the list.
+                </SheetDescription>
+              </SheetHeader>
+
+              {t ? (
+                <div className="space-y-5 py-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Merchant name</Label>
+                    <Input
+                      value={detailsDraft.name}
+                      onChange={(e) => setDetailsDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                    {detailsOriginalName && detailsOriginalName !== detailsDraft.name && (
+                      <div className="text-[11px] text-muted-foreground">Original: {detailsOriginalName}</div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Date</Label>
+                      <Input
+                        type="date"
+                        value={detailsDraft.date}
+                        onChange={(e) => setDetailsDraft((d) => ({ ...d, date: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Amount</Label>
+                      <div className="h-9 flex items-center text-sm tabular-nums">{fmtCurrency(Number(t.amount))}</div>
+                    </div>
+                  </div>
+
+                  {t.accounts?.name && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Account</Label>
+                      <div className="text-sm">
+                        {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Category</Label>
+                    <CategoryCombobox
+                      value={t.category_id}
+                      categories={categories as any}
+                      onChange={(v) => handleCategoryChange(t, v)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Treatment</Label>
+                    <TreatmentPicker
+                      treatment={(t.treatment ?? "normal") as Treatment}
+                      meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                      amount={Number(t.amount)}
+                      date={t.date}
+                      onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Note</Label>
+                    <Textarea
+                      rows={4}
+                      placeholder="Add a note about this transaction…"
+                      value={detailsDraft.note}
+                      onChange={(e) => setDetailsDraft((d) => ({ ...d, note: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Reviewed</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t.reviewed && t.reviewed_at ? `Marked ${fmtDate(t.reviewed_at)}` : "Not yet reviewed"}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={t.reviewed ? "secondary" : "outline"}
+                      onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                    >
+                      {t.reviewed ? (<><Check className="h-3.5 w-3.5 mr-1.5" />Reviewed</>) : "Mark as reviewed"}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Excluded from totals</div>
+                      <div className="text-xs text-muted-foreground">Hide this transaction from spend summaries.</div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={t.excluded ? "secondary" : "outline"}
+                      onClick={() => updateField(t.id, "excluded", t.excluded, !t.excluded)}
+                    >
+                      {t.excluded ? "Excluded" : "Exclude"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <SheetFooter className="gap-2 sm:gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setDetailsId(null)} disabled={savingDetails}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
+                  {savingDetails ? "Saving…" : "Save changes"}
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+        );
+      })()}
 
       {/* Alias prompt */}
       <Dialog open={!!aliasPrompt} onOpenChange={(o) => { if (!o && !creatingAlias) setAliasPrompt(null); }}>
