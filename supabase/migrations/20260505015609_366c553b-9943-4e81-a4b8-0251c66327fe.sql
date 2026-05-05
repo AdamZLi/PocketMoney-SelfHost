@@ -1,0 +1,1 @@
+ALTER TYPE public.txn_treatment ADD VALUE IF NOT EXISTS 'split';
