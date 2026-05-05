@@ -306,6 +306,25 @@ const Transactions = () => {
     }
   }
 
+  // Open side panel from ?edit=<id> URL param (e.g., from Dashboard).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || detailsId === editId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("transactions")
+        .select("id,date,name,amount,note,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,category_id,excluded,accounts(name,mask)")
+        .eq("id", editId)
+        .maybeSingle();
+      if (data) openDetails(data as any);
+      const next = new URLSearchParams(searchParams);
+      next.delete("edit");
+      setSearchParams(next, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
