@@ -145,6 +145,7 @@ const Transactions = () => {
       name: t.name ?? "",
       date: t.date ?? "",
       note: t.note ?? "",
+      amount: t.amount != null ? String(t.amount) : "",
     });
   }
 
@@ -167,6 +168,11 @@ const Transactions = () => {
     if ((t.note ?? "") !== newNote) {
       updates.note = newNote || null;
       edits.push({ field_changed: "note", old_value: t.note, new_value: newNote || null });
+    }
+    const parsedAmount = detailsDraft.amount.trim() === "" ? NaN : Number(detailsDraft.amount);
+    if (!Number.isNaN(parsedAmount) && parsedAmount !== Number(t.amount)) {
+      updates.amount = parsedAmount;
+      edits.push({ field_changed: "amount", old_value: Number(t.amount), new_value: parsedAmount });
     }
     if (Object.keys(updates).length === 0) {
       setDetailsId(null);
