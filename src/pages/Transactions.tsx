@@ -17,6 +17,10 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle,
+} from "@/components/ui/sheet";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -79,6 +83,12 @@ const Transactions = () => {
   const [renaming, setRenaming] = useState(false);
   const [creatingAlias, setCreatingAlias] = useState(false);
 
+  // Transaction details side panel
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string }>({ name: "", date: "", note: "" });
+  const [detailsOriginalName, setDetailsOriginalName] = useState<string>("");
+  const [savingDetails, setSavingDetails] = useState(false);
+
   // Manual transaction entry
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
@@ -125,6 +135,71 @@ const Transactions = () => {
       toast({ title: "Add failed", description: e.message ?? String(e), variant: "destructive" });
     } finally {
       setAddSaving(false);
+    }
+  }
+
+  function openDetails(t: any) {
+    setDetailsId(t.id);
+    setDetailsOriginalName(t.name);
+    setDetailsDraft({
+      name: t.name ?? "",
+      date: t.date ?? "",
+      note: t.note ?? "",
+    });
+  }
+
+  async function saveDetails() {
+    if (!detailsId) return;
+    const t = (txns as any[]).find((x) => x.id === detailsId);
+    if (!t) return;
+    const updates: Record<string, any> = {};
+    const edits: { field_changed: string; old_value: any; new_value: any }[] = [];
+    const newName = detailsDraft.name.trim();
+    if (newName && newName !== t.name) {
+      updates.name = newName;
+      edits.push({ field_changed: "name", old_value: t.name, new_value: newName });
+    }
+    if (detailsDraft.date && detailsDraft.date !== t.date) {
+      updates.date = detailsDraft.date;
+      edits.push({ field_changed: "date", old_value: t.date, new_value: detailsDraft.date });
+    }
+    const newNote = detailsDraft.note ?? "";
+    if ((t.note ?? "") !== newNote) {
+      updates.note = newNote || null;
+      edits.push({ field_changed: "note", old_value: t.note, new_value: newNote || null });
+    }
+    if (Object.keys(updates).length === 0) {
+      setDetailsId(null);
+      return;
+    }
+    setSavingDetails(true);
+    try {
+      const { error } = await supabase.from("transactions").update(updates as any).eq("id", detailsId);
+      if (error) throw error;
+      if (edits.length > 0) {
+        await supabase.from("transaction_edits").insert(edits.map((e) => ({ transaction_id: detailsId, ...e })));
+      }
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      toast({ title: "Transaction updated" });
+      // If the name changed, optionally offer the alias prompt as before.
+      if (updates.name) {
+        const { count } = await supabase
+          .from("transactions")
+          .select("id", { count: "exact", head: true })
+          .ilike("name", detailsOriginalName)
+          .neq("id", detailsId);
+        const matchCount = count ?? 0;
+        setDetailsId(null);
+        if (matchCount > 0) {
+          setAliasPrompt({ oldName: detailsOriginalName, newName: updates.name, matchCount });
+        }
+      } else {
+        setDetailsId(null);
+      }
+    } catch (e: any) {
+      toast({ title: "Save failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setSavingDetails(false);
     }
   }
 
@@ -1398,8 +1473,8 @@ const Transactions = () => {
                       variant="ghost"
                       size="icon"
                       className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
-                      onClick={() => { setRenameTarget({ id: t.id, oldName: t.name }); setRenameValue(t.name); }}
-                      title="Edit merchant name"
+                      onClick={() => openDetails(t)}
+                      title="Edit transaction"
                     >
                       <Pencil className="h-3 w-3" />
                     </Button>
@@ -1582,34 +1657,132 @@ const Transactions = () => {
         </div>
       )}
 
-      {/* Rename merchant dialog */}
-      <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o && !renaming) setRenameTarget(null); }}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Edit merchant name</DialogTitle>
-            <DialogDescription>
-              Rename this transaction's merchant. You'll then be asked whether to save it as an alias and apply to other matching transactions.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-2 py-2">
-            <Label className="text-xs text-muted-foreground">Original</Label>
-            <div className="text-sm text-muted-foreground truncate">{renameTarget?.oldName}</div>
-            <Label className="text-xs text-muted-foreground pt-2">New name</Label>
-            <Input
-              autoFocus
-              value={renameValue}
-              onChange={(e) => setRenameValue(e.target.value)}
-              onKeyDown={(e) => { if (e.key === "Enter") submitRename(); }}
-            />
-          </div>
-          <DialogFooter>
-            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</Button>
-            <Button size="sm" onClick={submitRename} disabled={renaming || !renameValue.trim()}>
-              {renaming ? "Saving…" : "Save"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Transaction details side panel */}
+      {(() => {
+        const t = detailsId ? (txns as any[]).find((x) => x.id === detailsId) : null;
+        return (
+          <Sheet open={!!detailsId} onOpenChange={(o) => { if (!o && !savingDetails) setDetailsId(null); }}>
+            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
+              <SheetHeader>
+                <SheetTitle>Edit transaction</SheetTitle>
+                <SheetDescription>
+                  Update merchant, date, category, treatment, note, and review state without leaving the list.
+                </SheetDescription>
+              </SheetHeader>
+
+              {t ? (
+                <div className="space-y-5 py-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Merchant name</Label>
+                    <Input
+                      value={detailsDraft.name}
+                      onChange={(e) => setDetailsDraft((d) => ({ ...d, name: e.target.value }))}
+                    />
+                    {detailsOriginalName && detailsOriginalName !== detailsDraft.name && (
+                      <div className="text-[11px] text-muted-foreground">Original: {detailsOriginalName}</div>
+                    )}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Date</Label>
+                      <Input
+                        type="date"
+                        value={detailsDraft.date}
+                        onChange={(e) => setDetailsDraft((d) => ({ ...d, date: e.target.value }))}
+                      />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Amount</Label>
+                      <div className="h-9 flex items-center text-sm tabular-nums">{fmtCurrency(Number(t.amount))}</div>
+                    </div>
+                  </div>
+
+                  {t.accounts?.name && (
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Account</Label>
+                      <div className="text-sm">
+                        {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Category</Label>
+                    <CategoryCombobox
+                      value={t.category_id}
+                      categories={categories as any}
+                      onChange={(v) => handleCategoryChange(t, v)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Treatment</Label>
+                    <TreatmentPicker
+                      treatment={(t.treatment ?? "normal") as Treatment}
+                      meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                      amount={Number(t.amount)}
+                      date={t.date}
+                      onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Note</Label>
+                    <Textarea
+                      rows={4}
+                      placeholder="Add a note about this transaction…"
+                      value={detailsDraft.note}
+                      onChange={(e) => setDetailsDraft((d) => ({ ...d, note: e.target.value }))}
+                    />
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Reviewed</div>
+                      <div className="text-xs text-muted-foreground">
+                        {t.reviewed && t.reviewed_at ? `Marked ${fmtDate(t.reviewed_at)}` : "Not yet reviewed"}
+                      </div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={t.reviewed ? "secondary" : "outline"}
+                      onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                    >
+                      {t.reviewed ? (<><Check className="h-3.5 w-3.5 mr-1.5" />Reviewed</>) : "Mark as reviewed"}
+                    </Button>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-md border p-3">
+                    <div>
+                      <div className="text-sm font-medium">Excluded from totals</div>
+                      <div className="text-xs text-muted-foreground">Hide this transaction from spend summaries.</div>
+                    </div>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={t.excluded ? "secondary" : "outline"}
+                      onClick={() => updateField(t.id, "excluded", t.excluded, !t.excluded)}
+                    >
+                      {t.excluded ? "Excluded" : "Exclude"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <SheetFooter className="gap-2 sm:gap-2">
+                <Button variant="ghost" size="sm" onClick={() => setDetailsId(null)} disabled={savingDetails}>
+                  Cancel
+                </Button>
+                <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
+                  {savingDetails ? "Saving…" : "Save changes"}
+                </Button>
+              </SheetFooter>
+            </SheetContent>
+          </Sheet>
+        );
+      })()}
 
       {/* Alias prompt */}
       <Dialog open={!!aliasPrompt} onOpenChange={(o) => { if (!o && !creatingAlias) setAliasPrompt(null); }}>
