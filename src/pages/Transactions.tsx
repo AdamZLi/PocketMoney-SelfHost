@@ -1391,7 +1391,7 @@ const Transactions = () => {
 
       {/* Table */}
       {(() => {
-        const GRID = "grid-cols-[24px_1fr_180px_140px_110px_120px]";
+        const GRID = "grid-cols-[24px_1fr_180px_140px_120px]";
         // Group by month then by date.
         const months = new Map<string, { label: string; total: number; days: Map<string, any[]> }>();
         for (const t of txns as any[]) {
