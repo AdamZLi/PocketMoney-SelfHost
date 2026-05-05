@@ -2,7 +2,8 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate, fmtMonthYear } from "@/lib/format";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { TrendingDown, Wallet, Tag } from "lucide-react";
+import { TrendingDown, Wallet, Tag, ArrowUpRight } from "lucide-react";
+import { Link } from "react-router-dom";
 import { effectiveMonthlyContribution } from "@/lib/treatments";
 
 const Dashboard = () => {
