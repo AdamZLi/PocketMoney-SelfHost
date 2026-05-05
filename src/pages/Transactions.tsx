@@ -1050,7 +1050,7 @@ const Transactions = () => {
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
-                  <h2>AI scan & review</h2>
+                  <h2 className="text-lg font-semibold">AI scan &amp; review</h2>
                   <p>
                     Pick which transactions to analyze. Existing rules apply first; the AI agent reviews the rest. You'll preview changes before anything is saved.
                   </p>
@@ -1108,7 +1108,7 @@ const Transactions = () => {
           {scanStage === "previewing" && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2>Analyzing transactions…</h2>
+                <h2 className="text-lg font-semibold">Analyzing transactions…</h2>
                 <p>
                   Applying rules and asking the AI agent to review the remaining merchants.
                 </p>
@@ -1131,7 +1131,7 @@ const Transactions = () => {
           {scanStage === "preview" && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2>Review proposed changes</h2>
+                <h2 className="text-lg font-semibold">Review proposed changes</h2>
                 <p>
                   {previewItems.length === 0
                     ? "No category changes are needed."
@@ -1193,7 +1193,7 @@ const Transactions = () => {
           {scanStage === "applying" && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2>Applying changes…</h2>
+                <h2 className="text-lg font-semibold">Applying changes…</h2>
                 <p>Updating your transactions.</p>
               </div>
               <div className="px-6 py-6 space-y-3">
