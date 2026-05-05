@@ -83,6 +83,12 @@ const Transactions = () => {
   const [renaming, setRenaming] = useState(false);
   const [creatingAlias, setCreatingAlias] = useState(false);
 
+  // Transaction details side panel
+  const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string }>({ name: "", date: "", note: "" });
+  const [detailsOriginalName, setDetailsOriginalName] = useState<string>("");
+  const [savingDetails, setSavingDetails] = useState(false);
+
   // Manual transaction entry
   const [addOpen, setAddOpen] = useState(false);
   const [addSaving, setAddSaving] = useState(false);
