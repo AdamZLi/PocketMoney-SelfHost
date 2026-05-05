@@ -1044,6 +1044,7 @@ const Transactions = () => {
             <SelectItem value="refundable">Refundable</SelectItem>
             <SelectItem value="reimbursable">Reimbursable / split</SelectItem>
             <SelectItem value="amortized">Amortized</SelectItem>
+            <SelectItem value="split">Split into parts</SelectItem>
           </SelectContent>
         </Select>
 
