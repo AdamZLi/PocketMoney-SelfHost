@@ -618,6 +618,7 @@ const Trends = () => {
         month={selectedMonth}
         rows={rows}
         showRaw={showRaw}
+        categories={categoriesList as any}
         onClose={() => setSelectedMonth(null)}
       />
     </div>
@@ -628,16 +629,55 @@ function MonthBreakdown({
   month,
   rows,
   showRaw,
+  categories,
   onClose,
 }: {
   month: string | null;
   rows: Row[];
   showRaw: boolean;
+  categories: { id: string; name: string; parent_category: string | null }[];
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
+
+  async function updateField(id: string, field: string, oldVal: any, newVal: any) {
+    const { error } = await supabase.from("transactions").update({ [field]: newVal } as any).eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: field, old_value: oldVal, new_value: newVal,
+    });
+    qc.invalidateQueries({ queryKey: ["trends"] });
+  }
+
+  async function updateTreatment(id: string, treatment: Treatment, meta: TreatmentMeta) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ treatment, treatment_meta: meta as any } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    await supabase.from("transaction_edits").insert({
+      transaction_id: id, field_changed: "treatment", old_value: null, new_value: treatment,
+    });
+    toast({ title: treatment === "normal" ? "Treatment cleared" : `Set to ${treatment}` });
+    qc.invalidateQueries({ queryKey: ["trends"] });
+  }
+
+  async function toggleReviewed(id: string, next: boolean) {
+    const { error } = await supabase
+      .from("transactions")
+      .update({ reviewed: next, reviewed_at: next ? new Date().toISOString() : null } as any)
+      .eq("id", id);
+    if (error) { toast({ title: "Update failed", description: error.message, variant: "destructive" }); return; }
+    qc.invalidateQueries({ queryKey: ["trends"] });
+  }
+
   const breakdown = useMemo(() => {
     if (!month) return null;
-    type Item = { id: string; name: string; date: string; amount: number; note?: string };
+    type Item = {
+      row: Row;
+      effective: number;
+      note?: string;
+    };
     const byCat = new Map<string, { total: number; items: Item[] }>();
     let total = 0;
     for (const r of rows) {
@@ -668,7 +708,7 @@ function MonthBreakdown({
       }
       const cur = byCat.get(cat) ?? { total: 0, items: [] };
       cur.total += v;
-      cur.items.push({ id: r.id, name: r.name, date: r.date, amount: v, note });
+      cur.items.push({ row: r, effective: v, note });
       byCat.set(cat, cur);
       total += v;
     }
@@ -676,7 +716,7 @@ function MonthBreakdown({
       .map(([name, v]) => ({
         name,
         total: v.total,
-        items: v.items.sort((a, b) => b.amount - a.amount),
+        items: v.items.sort((a, b) => b.effective - a.effective),
       }))
       .sort((a, b) => b.total - a.total);
     return { total, cats };
@@ -716,29 +756,68 @@ function MonthBreakdown({
                   </span>
                 </div>
               </div>
-              <ul className="divide-y divide-border/40">
-                {c.items.map((it, idx) => (
-                  <li
-                    key={`${it.id}-${idx}`}
-                    className="flex items-center justify-between py-2 text-sm"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <span className="text-xs text-muted-foreground tabular-nums w-16 shrink-0">
-                        {fmtDate(it.date)}
+              <div>
+                {c.items.map((it, idx) => {
+                  const t = it.row;
+                  const raw = Number(t.amount);
+                  const muted = (t.treatment ?? "normal") !== "normal" && Math.abs(it.effective) !== Math.abs(raw);
+                  return (
+                    <div
+                      key={`${t.id}-${idx}`}
+                      className="grid grid-cols-[80px_1fr_180px_140px_100px_120px] gap-3 items-center py-2.5 border-b border-border/30 text-sm"
+                    >
+                      <span className="text-xs text-muted-foreground tabular-nums">
+                        {fmtDate(t.date)}
                       </span>
-                      <span className="truncate">{it.name}</span>
-                      {it.note && (
-                        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
-                          · {it.note}
-                        </span>
-                      )}
+                      <div className="min-w-0">
+                        <div className="truncate">{t.name}</div>
+                        {it.note && (
+                          <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            {it.note}
+                          </div>
+                        )}
+                      </div>
+                      <CategoryCombobox
+                        value={t.category_id}
+                        categories={categories}
+                        onChange={(v) => updateField(t.id, "category_id", t.category_id, v)}
+                      />
+                      <TreatmentPicker
+                        treatment={(t.treatment ?? "normal") as Treatment}
+                        meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                        amount={raw}
+                        date={t.date}
+                        onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className={`h-7 px-2 gap-1.5 justify-start font-normal text-xs ${
+                          t.reviewed ? "text-emerald-700 hover:text-emerald-700" : "text-muted-foreground"
+                        }`}
+                        onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                      >
+                        {t.reviewed ? (
+                          <><Check className="h-3.5 w-3.5" /> Reviewed</>
+                        ) : (
+                          <><span className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" /> Mark</>
+                        )}
+                      </Button>
+                      <div className="text-right">
+                        <div className={`tabular-nums font-medium ${muted ? "text-muted-foreground" : ""}`}>
+                          {fmtCurrency(it.effective)}
+                        </div>
+                        {muted && (
+                          <div className="text-[10px] tabular-nums text-muted-foreground mt-0.5">
+                            of {fmtCurrency(Math.abs(raw))}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                    <span className="tabular-nums text-foreground/90 ml-3">
-                      {fmtCurrency(it.amount)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
+                  );
+                })}
+              </div>
             </div>
           ))}
         </div>
