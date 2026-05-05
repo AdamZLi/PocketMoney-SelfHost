@@ -301,9 +301,17 @@ const Review = () => {
                       : total;
                   const owed = total - share;
                   return (
-                    <div key={t.id} className="flex items-center gap-3 py-2 text-sm">
+                    <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
-                      <span className="flex-1 truncate">{t.name}</span>
+                      <span className="flex-1 truncate">
+                        {t.name}
+                        {(t as any).partLabel && (
+                          <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
+                        )}
+                        {typeof (t as any).partIndex === "number" && !(t as any).partLabel && (
+                          <span className="text-muted-foreground text-xs ml-1">· part {(t as any).partIndex + 1}</span>
+                        )}
+                      </span>
                       <span className="text-muted-foreground text-xs">
                         Your {fmtCurrency(share)} of {fmtCurrency(total)}
                       </span>
