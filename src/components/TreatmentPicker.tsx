@@ -71,6 +71,44 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
       }
     } else if (draft === "excluded") {
       if (draftMeta.reason) cleanMeta.reason = draftMeta.reason;
+    } else if (draft === "split") {
+      const total = Math.abs(amount);
+      const rawParts = (draftMeta.parts ?? []).filter((p) => Number(p.amount) > 0);
+      const parts: SplitPart[] = rawParts.map((p) => {
+        const partMeta: TreatmentMeta = {};
+        const m = p.meta ?? {};
+        if (p.treatment === "refundable") {
+          partMeta.expected_refund_date = m.expected_refund_date || null;
+          partMeta.refund_status = m.refund_status ?? "pending";
+        } else if (p.treatment === "reimbursable") {
+          partMeta.your_share =
+            typeof m.your_share === "number" && !isNaN(m.your_share)
+              ? m.your_share
+              : Math.abs(p.amount) / 2;
+          partMeta.owed_by = m.owed_by || "";
+          partMeta.reimbursement_status = m.reimbursement_status ?? "pending";
+        } else if (p.treatment === "amortized") {
+          const mode = m.amort_mode ?? "calendar_year";
+          partMeta.amort_mode = mode;
+          if (mode === "calendar_year") {
+            partMeta.months = 12;
+            partMeta.start_date = `${date.slice(0, 4)}-01`;
+          } else {
+            partMeta.months = Math.max(1, Math.floor(m.months ?? 12));
+            partMeta.start_date = (m.start_date || date).slice(0, 7);
+          }
+        } else if (p.treatment === "excluded") {
+          if (m.reason) partMeta.reason = m.reason;
+        }
+        return { label: p.label?.trim() || undefined, amount: Math.abs(p.amount), treatment: p.treatment, meta: partMeta };
+      });
+      if (parts.length < 2) {
+        // Need at least 2 parts; fall back to normal
+        await onSave("normal", {});
+        setOpen(false);
+        return;
+      }
+      cleanMeta.parts = parts;
     }
     await onSave(draft, cleanMeta);
     setOpen(false);
