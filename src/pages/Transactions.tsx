@@ -8,7 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { toast } from "@/hooks/use-toast";
-import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag, Check, CalendarCheck } from "lucide-react";
+import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag, Check, CalendarCheck, Pencil } from "lucide-react";
 import { applyRules, type Rule } from "@/lib/categorize";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
@@ -71,6 +71,110 @@ const Transactions = () => {
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
+
+  // Inline merchant rename
+  const [renameTarget, setRenameTarget] = useState<{ id: string; oldName: string } | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [aliasPrompt, setAliasPrompt] = useState<{ oldName: string; newName: string; matchCount: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [creatingAlias, setCreatingAlias] = useState(false);
+
+  async function submitRename() {
+    if (!renameTarget) return;
+    const newName = renameValue.trim();
+    if (!newName || newName === renameTarget.oldName) { setRenameTarget(null); return; }
+    setRenaming(true);
+    try {
+      const { error } = await supabase
+        .from("transactions")
+        .update({ name: newName } as any)
+        .eq("id", renameTarget.id);
+      if (error) throw error;
+      await supabase.from("transaction_edits").insert({
+        transaction_id: renameTarget.id,
+        field_changed: "name",
+        old_value: renameTarget.oldName as any,
+        new_value: newName as any,
+      });
+      // Count other transactions with the same original name (case-insensitive).
+      const { count } = await supabase
+        .from("transactions")
+        .select("id", { count: "exact", head: true })
+        .ilike("name", renameTarget.oldName)
+        .neq("id", renameTarget.id);
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      const matchCount = count ?? 0;
+      const oldName = renameTarget.oldName;
+      setRenameTarget(null);
+      setAliasPrompt({ oldName, newName, matchCount });
+    } catch (e: any) {
+      toast({ title: "Rename failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setRenaming(false);
+    }
+  }
+
+  async function createAliasAndApply(applyToOthers: boolean) {
+    if (!aliasPrompt) return;
+    setCreatingAlias(true);
+    try {
+      const { oldName, newName } = aliasPrompt;
+      // Upsert an alias row keyed on the original raw merchant string.
+      const { data: existing } = await supabase
+        .from("merchant_aliases")
+        .select("id")
+        .eq("pattern", oldName)
+        .eq("match_type", "exact")
+        .limit(1);
+      if (existing && existing.length > 0) {
+        await supabase
+          .from("merchant_aliases")
+          .update({ display_name: newName, priority: 1000, source: "user" })
+          .eq("id", existing[0].id);
+      } else {
+        await supabase.from("merchant_aliases").insert({
+          pattern: oldName,
+          match_type: "exact",
+          display_name: newName,
+          priority: 1000,
+          source: "user",
+        });
+      }
+      let updated = 0;
+      if (applyToOthers) {
+        const { data: matched } = await supabase
+          .from("transactions")
+          .select("id,name")
+          .ilike("name", oldName);
+        const ids = (matched ?? []).map((m: any) => m.id);
+        if (ids.length > 0) {
+          await supabase.from("transactions").update({ name: newName } as any).in("id", ids);
+          await supabase.from("transaction_edits").insert(
+            (matched ?? []).map((m: any) => ({
+              transaction_id: m.id,
+              field_changed: "name",
+              old_value: m.name,
+              new_value: newName,
+            }))
+          );
+          updated = ids.length;
+        }
+      }
+      toast({
+        title: "Alias saved",
+        description: applyToOthers
+          ? `Updated ${updated} matching transaction${updated === 1 ? "" : "s"}.`
+          : "Future imports matching this merchant will use the new name.",
+      });
+      qc.invalidateQueries({ queryKey: ["txns"] });
+    } catch (e: any) {
+      toast({ title: "Alias failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setCreatingAlias(false);
+      setAliasPrompt(null);
+    }
+  }
+
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -1095,6 +1199,16 @@ const Transactions = () => {
                     {t.status === "pending" && (
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">pending</span>
                     )}
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-foreground"
+                      onClick={() => { setRenameTarget({ id: t.id, oldName: t.name }); setRenameValue(t.name); }}
+                      title="Edit merchant name"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
                   </div>
                   {t.accounts?.name && (
                     <div className="text-xs text-muted-foreground mt-0.5 truncate">
@@ -1268,6 +1382,63 @@ const Transactions = () => {
           </div>
         </div>
       )}
+
+      {/* Rename merchant dialog */}
+      <Dialog open={!!renameTarget} onOpenChange={(o) => { if (!o && !renaming) setRenameTarget(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Edit merchant name</DialogTitle>
+            <DialogDescription>
+              Rename this transaction's merchant. You'll then be asked whether to save it as an alias and apply to other matching transactions.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2 py-2">
+            <Label className="text-xs text-muted-foreground">Original</Label>
+            <div className="text-sm text-muted-foreground truncate">{renameTarget?.oldName}</div>
+            <Label className="text-xs text-muted-foreground pt-2">New name</Label>
+            <Input
+              autoFocus
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") submitRename(); }}
+            />
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" size="sm" onClick={() => setRenameTarget(null)} disabled={renaming}>Cancel</Button>
+            <Button size="sm" onClick={submitRename} disabled={renaming || !renameValue.trim()}>
+              {renaming ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Alias prompt */}
+      <Dialog open={!!aliasPrompt} onOpenChange={(o) => { if (!o && !creatingAlias) setAliasPrompt(null); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Save as merchant alias?</DialogTitle>
+            <DialogDescription>
+              Create an alias so future imports matching <span className="font-medium text-foreground">{aliasPrompt?.oldName}</span> are automatically displayed as <span className="font-medium text-foreground">{aliasPrompt?.newName}</span>.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="text-sm text-muted-foreground py-2">
+            {aliasPrompt?.matchCount === 0
+              ? "No other transactions currently share this merchant name."
+              : `${aliasPrompt?.matchCount} other transaction${aliasPrompt?.matchCount === 1 ? "" : "s"} share this merchant name.`}
+          </div>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button variant="ghost" size="sm" onClick={() => setAliasPrompt(null)} disabled={creatingAlias}>
+              Don't save
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => createAliasAndApply(false)} disabled={creatingAlias}>
+              Save alias only
+            </Button>
+            <Button size="sm" onClick={() => createAliasAndApply(true)} disabled={creatingAlias || !aliasPrompt?.matchCount}>
+              {creatingAlias ? "Applying…" : `Save & apply to ${aliasPrompt?.matchCount ?? 0}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
