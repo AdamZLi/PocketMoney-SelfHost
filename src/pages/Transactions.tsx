@@ -1212,7 +1212,7 @@ const Transactions = () => {
           {scanStage === "summary" && lastApplied && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2 className="flex items-center gap-2">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
                   <CheckCircle2 className="h-5 w-5 text-foreground/80" />
                   Scan complete
                 </h2>
