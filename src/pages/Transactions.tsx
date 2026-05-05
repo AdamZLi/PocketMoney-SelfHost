@@ -796,6 +796,15 @@ const Transactions = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => { resetAddForm(); setAddOpen(true); }}
+            className="h-9 gap-2"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            Add transaction
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => { resetScanDialog(); setScanOpen(true); }}
             disabled={scanning}
             className="h-9 gap-2"
@@ -809,6 +818,99 @@ const Transactions = () => {
           </Button>
         </div>
       </div>
+
+      <Dialog open={addOpen} onOpenChange={(o) => { if (!addSaving) { setAddOpen(o); if (!o) resetAddForm(); } }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Add transaction</DialogTitle>
+            <DialogDescription>
+              Log a transaction manually. Use a positive amount for expenses and a negative amount for income/refunds.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Date</Label>
+                <Input
+                  type="date"
+                  value={addForm.date}
+                  onChange={(e) => setAddForm((f) => ({ ...f, date: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Amount</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={addForm.amount}
+                  onChange={(e) => setAddForm((f) => ({ ...f, amount: e.target.value }))}
+                  className="h-9"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Merchant</Label>
+              <Input
+                placeholder="e.g. Whole Foods"
+                value={addForm.name}
+                onChange={(e) => setAddForm((f) => ({ ...f, name: e.target.value }))}
+                className="h-9"
+                maxLength={200}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Account</Label>
+              <Select
+                value={addForm.account_id}
+                onValueChange={(v) => setAddForm((f) => ({ ...f, account_id: v }))}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No account</SelectItem>
+                  {(accounts as any[]).map((a) => (
+                    <SelectItem key={a.id} value={a.id}>
+                      {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Category</Label>
+              <Select
+                value={addForm.category_id}
+                onValueChange={(v) => setAddForm((f) => ({ ...f, category_id: v }))}
+              >
+                <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Uncategorized</SelectItem>
+                  {(categories as any[]).map((c) => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs text-muted-foreground">Note (optional)</Label>
+              <Input
+                value={addForm.note}
+                onChange={(e) => setAddForm((f) => ({ ...f, note: e.target.value }))}
+                className="h-9"
+                maxLength={500}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setAddOpen(false)} disabled={addSaving}>Cancel</Button>
+            <Button onClick={submitAddTransaction} disabled={addSaving} className="gap-2">
+              {addSaving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+              Add transaction
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog
         open={scanOpen}
