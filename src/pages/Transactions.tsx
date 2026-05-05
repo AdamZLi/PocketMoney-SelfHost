@@ -1425,9 +1425,14 @@ const Transactions = () => {
           <div>
             <div className={`grid ${GRID} gap-4 px-2 py-3 text-xs text-muted-foreground border-b`}>
               <Checkbox
-                checked={txns.length > 0 && selected.size === txns.length}
-                onCheckedChange={(v) => toggleAll(!!v)}
-                title="Select all"
+                checked={txns.length > 0 && (txns as any[]).every((t: any) => t.reviewed)}
+                onCheckedChange={async (v) => {
+                  const next = !!v;
+                  await Promise.all((txns as any[])
+                    .filter((t: any) => !!t.reviewed !== next)
+                    .map((t: any) => toggleReviewed(t.id, next)));
+                }}
+                title="Mark all as reviewed"
               />
               <button
                 type="button"
