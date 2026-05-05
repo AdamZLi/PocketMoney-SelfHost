@@ -1391,7 +1391,7 @@ const Transactions = () => {
 
       {/* Table */}
       {(() => {
-        const GRID = "grid-cols-[24px_1fr_180px_140px_110px_120px]";
+        const GRID = "grid-cols-[24px_1fr_180px_140px_120px]";
         // Group by month then by date.
         const months = new Map<string, { label: string; total: number; days: Map<string, any[]> }>();
         for (const t of txns as any[]) {
@@ -1425,8 +1425,14 @@ const Transactions = () => {
           <div>
             <div className={`grid ${GRID} gap-4 px-2 py-3 text-xs text-muted-foreground border-b`}>
               <Checkbox
-                checked={txns.length > 0 && selected.size === txns.length}
-                onCheckedChange={(v) => toggleAll(!!v)}
+                checked={txns.length > 0 && (txns as any[]).every((t: any) => t.reviewed)}
+                onCheckedChange={async (v) => {
+                  const next = !!v;
+                  await Promise.all((txns as any[])
+                    .filter((t: any) => !!t.reviewed !== next)
+                    .map((t: any) => toggleReviewed(t.id, next)));
+                }}
+                title="Mark all as reviewed"
               />
               <button
                 type="button"
@@ -1437,7 +1443,6 @@ const Transactions = () => {
               </button>
               <span>Category</span>
               <span>Treatment</span>
-              <span>Reviewed</span>
               <span className="text-right">Amount</span>
             </div>
 
@@ -1464,9 +1469,9 @@ const Transactions = () => {
                           } ${t.excluded ? "opacity-50" : ""}`}
                         >
                           <Checkbox
-                            checked={isSelected}
-                            onCheckedChange={(v) => toggleOne(t.id, !!v)}
-                            className={isSelected ? "" : "opacity-0 group-hover:opacity-100 data-[state=checked]:opacity-100 transition-opacity"}
+                            checked={!!t.reviewed}
+                            onCheckedChange={(v) => toggleReviewed(t.id, !!v)}
+                            title={t.reviewed && t.reviewed_at ? `Reviewed ${fmtDate(t.reviewed_at)}` : "Mark as reviewed"}
                           />
                           <div className="min-w-0">
                   <div className="flex items-center gap-2">
@@ -1503,30 +1508,6 @@ const Transactions = () => {
                   date={t.date}
                   onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
                 />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className={`h-7 px-2.5 gap-1.5 justify-start font-normal text-xs ${
-                    t.reviewed
-                      ? "text-emerald-700 hover:text-emerald-700"
-                      : "text-muted-foreground"
-                  }`}
-                  onClick={() => toggleReviewed(t.id, !t.reviewed)}
-                  title={t.reviewed && t.reviewed_at ? `Reviewed ${fmtDate(t.reviewed_at)}` : "Mark as reviewed"}
-                >
-                  {t.reviewed ? (
-                    <>
-                      <Check className="h-3.5 w-3.5" />
-                      Reviewed
-                    </>
-                  ) : (
-                    <>
-                      <span className="h-3.5 w-3.5 rounded-full border border-muted-foreground/40" />
-                      Mark
-                    </>
-                  )}
-                </Button>
                 {(() => {
                   const raw = Number(t.amount);
                   const eff = effectiveMonthlyContribution(
