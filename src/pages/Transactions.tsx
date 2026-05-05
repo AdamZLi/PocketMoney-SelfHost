@@ -85,7 +85,7 @@ const Transactions = () => {
 
   // Transaction details side panel
   const [detailsId, setDetailsId] = useState<string | null>(null);
-  const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string }>({ name: "", date: "", note: "" });
+  const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string; amount: string }>({ name: "", date: "", note: "", amount: "" });
   const [detailsOriginalName, setDetailsOriginalName] = useState<string>("");
   const [savingDetails, setSavingDetails] = useState(false);
 
@@ -145,6 +145,7 @@ const Transactions = () => {
       name: t.name ?? "",
       date: t.date ?? "",
       note: t.note ?? "",
+      amount: t.amount != null ? String(t.amount) : "",
     });
   }
 
@@ -167,6 +168,11 @@ const Transactions = () => {
     if ((t.note ?? "") !== newNote) {
       updates.note = newNote || null;
       edits.push({ field_changed: "note", old_value: t.note, new_value: newNote || null });
+    }
+    const parsedAmount = detailsDraft.amount.trim() === "" ? NaN : Number(detailsDraft.amount);
+    if (!Number.isNaN(parsedAmount) && parsedAmount !== Number(t.amount)) {
+      updates.amount = parsedAmount;
+      edits.push({ field_changed: "amount", old_value: Number(t.amount), new_value: parsedAmount });
     }
     if (Object.keys(updates).length === 0) {
       setDetailsId(null);
@@ -1657,130 +1663,149 @@ const Transactions = () => {
         </div>
       )}
 
-      {/* Transaction details side panel */}
+      {/* Transaction details side panel (non-modal: page behind stays scrollable) */}
       {(() => {
         const t = detailsId ? (txns as any[]).find((x) => x.id === detailsId) : null;
+        if (!t) return null;
         return (
-          <Sheet open={!!detailsId} onOpenChange={(o) => { if (!o && !savingDetails) setDetailsId(null); }}>
-            <SheetContent side="right" className="w-full sm:max-w-md overflow-y-auto">
-              <SheetHeader>
-                <SheetTitle>Edit transaction</SheetTitle>
-                <SheetDescription>
-                  Update merchant, date, category, treatment, note, and review state without leaving the list.
-                </SheetDescription>
-              </SheetHeader>
+          <aside
+            className="fixed top-0 right-0 z-40 h-screen w-full sm:max-w-md border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
+            role="dialog"
+            aria-label="Edit transaction"
+          >
+            <div className="flex items-start justify-between px-6 pt-6 pb-2">
+              <div>
+                <h2 className="text-lg font-semibold">Edit transaction</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Update merchant, date, amount, category, treatment, note, and review state without leaving the list.
+                </p>
+              </div>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 -mr-2 -mt-2 shrink-0"
+                onClick={() => { if (!savingDetails) setDetailsId(null); }}
+                aria-label="Close"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
 
-              {t ? (
-                <div className="space-y-5 py-4">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Merchant name</Label>
-                    <Input
-                      value={detailsDraft.name}
-                      onChange={(e) => setDetailsDraft((d) => ({ ...d, name: e.target.value }))}
-                    />
-                    {detailsOriginalName && detailsOriginalName !== detailsDraft.name && (
-                      <div className="text-[11px] text-muted-foreground">Original: {detailsOriginalName}</div>
-                    )}
-                  </div>
+            <div className="flex-1 overflow-y-auto px-6 space-y-5 py-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Merchant name</Label>
+                <Input
+                  value={detailsDraft.name}
+                  onChange={(e) => setDetailsDraft((d) => ({ ...d, name: e.target.value }))}
+                />
+                {detailsOriginalName && detailsOriginalName !== detailsDraft.name && (
+                  <div className="text-[11px] text-muted-foreground">Original: {detailsOriginalName}</div>
+                )}
+              </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Date</Label>
-                      <Input
-                        type="date"
-                        value={detailsDraft.date}
-                        onChange={(e) => setDetailsDraft((d) => ({ ...d, date: e.target.value }))}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Amount</Label>
-                      <div className="h-9 flex items-center text-sm tabular-nums">{fmtCurrency(Number(t.amount))}</div>
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Date</Label>
+                  <Input
+                    type="date"
+                    value={detailsDraft.date}
+                    onChange={(e) => setDetailsDraft((d) => ({ ...d, date: e.target.value }))}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Amount</Label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    inputMode="decimal"
+                    value={detailsDraft.amount}
+                    onChange={(e) => setDetailsDraft((d) => ({ ...d, amount: e.target.value }))}
+                    className="tabular-nums"
+                  />
+                </div>
+              </div>
 
-                  {t.accounts?.name && (
-                    <div className="space-y-1.5">
-                      <Label className="text-xs text-muted-foreground">Account</Label>
-                      <div className="text-sm">
-                        {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Category</Label>
-                    <CategoryCombobox
-                      value={t.category_id}
-                      categories={categories as any}
-                      onChange={(v) => handleCategoryChange(t, v)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Treatment</Label>
-                    <TreatmentPicker
-                      treatment={(t.treatment ?? "normal") as Treatment}
-                      meta={(t.treatment_meta ?? {}) as TreatmentMeta}
-                      amount={Number(t.amount)}
-                      date={t.date}
-                      onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Note</Label>
-                    <Textarea
-                      rows={4}
-                      placeholder="Add a note about this transaction…"
-                      value={detailsDraft.note}
-                      onChange={(e) => setDetailsDraft((d) => ({ ...d, note: e.target.value }))}
-                    />
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <div className="text-sm font-medium">Reviewed</div>
-                      <div className="text-xs text-muted-foreground">
-                        {t.reviewed && t.reviewed_at ? `Marked ${fmtDate(t.reviewed_at)}` : "Not yet reviewed"}
-                      </div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={t.reviewed ? "secondary" : "outline"}
-                      onClick={() => toggleReviewed(t.id, !t.reviewed)}
-                    >
-                      {t.reviewed ? (<><Check className="h-3.5 w-3.5 mr-1.5" />Reviewed</>) : "Mark as reviewed"}
-                    </Button>
-                  </div>
-
-                  <div className="flex items-center justify-between rounded-md border p-3">
-                    <div>
-                      <div className="text-sm font-medium">Excluded from totals</div>
-                      <div className="text-xs text-muted-foreground">Hide this transaction from spend summaries.</div>
-                    </div>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={t.excluded ? "secondary" : "outline"}
-                      onClick={() => updateField(t.id, "excluded", t.excluded, !t.excluded)}
-                    >
-                      {t.excluded ? "Excluded" : "Exclude"}
-                    </Button>
+              {t.accounts?.name && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Account</Label>
+                  <div className="text-sm">
+                    {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
                   </div>
                 </div>
-              ) : null}
+              )}
 
-              <SheetFooter className="gap-2 sm:gap-2">
-                <Button variant="ghost" size="sm" onClick={() => setDetailsId(null)} disabled={savingDetails}>
-                  Cancel
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Category</Label>
+                <CategoryCombobox
+                  value={t.category_id}
+                  categories={categories as any}
+                  onChange={(v) => handleCategoryChange(t, v)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Treatment</Label>
+                <TreatmentPicker
+                  treatment={(t.treatment ?? "normal") as Treatment}
+                  meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                  amount={Number(t.amount)}
+                  date={t.date}
+                  onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Note</Label>
+                <Textarea
+                  rows={4}
+                  placeholder="Add a note about this transaction…"
+                  value={detailsDraft.note}
+                  onChange={(e) => setDetailsDraft((d) => ({ ...d, note: e.target.value }))}
+                />
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-sm font-medium">Reviewed</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t.reviewed && t.reviewed_at ? `Marked ${fmtDate(t.reviewed_at)}` : "Not yet reviewed"}
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={t.reviewed ? "secondary" : "outline"}
+                  onClick={() => toggleReviewed(t.id, !t.reviewed)}
+                >
+                  {t.reviewed ? (<><Check className="h-3.5 w-3.5 mr-1.5" />Reviewed</>) : "Mark as reviewed"}
                 </Button>
-                <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
-                  {savingDetails ? "Saving…" : "Save changes"}
+              </div>
+
+              <div className="flex items-center justify-between rounded-md border p-3">
+                <div>
+                  <div className="text-sm font-medium">Excluded from totals</div>
+                  <div className="text-xs text-muted-foreground">Hide this transaction from spend summaries.</div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={t.excluded ? "secondary" : "outline"}
+                  onClick={() => updateField(t.id, "excluded", t.excluded, !t.excluded)}
+                >
+                  {t.excluded ? "Excluded" : "Exclude"}
                 </Button>
-              </SheetFooter>
-            </SheetContent>
-          </Sheet>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 border-t px-6 py-4 bg-background">
+              <Button variant="ghost" size="sm" onClick={() => setDetailsId(null)} disabled={savingDetails}>
+                Cancel
+              </Button>
+              <Button size="sm" onClick={saveDetails} disabled={savingDetails}>
+                {savingDetails ? "Saving…" : "Save changes"}
+              </Button>
+            </div>
+          </aside>
         );
       })()}
 
