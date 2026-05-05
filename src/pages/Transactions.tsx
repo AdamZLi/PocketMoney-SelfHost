@@ -1248,8 +1248,8 @@ const Transactions = () => {
               </SheetFooter>
             </>
           )}
-        </SheetContent>
-      </Sheet>
+        </aside>
+      )}
 
       {/* Toolbar */}
       <div className="flex items-center gap-2 mb-4 flex-wrap">
