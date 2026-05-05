@@ -1668,7 +1668,7 @@ const Transactions = () => {
 
       {/* Transaction details side panel (non-modal: page behind stays scrollable) */}
       {(() => {
-        const t = detailsId ? (txns as any[]).find((x) => x.id === detailsId) : null;
+        const t = detailsId ? ((txns as any[]).find((x) => x.id === detailsId) ?? detailsRecord) : null;
         if (!t) return null;
         return (
           <aside
