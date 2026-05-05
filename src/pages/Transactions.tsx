@@ -1051,7 +1051,7 @@ const Transactions = () => {
               <>
                 <div className="px-6 pt-6 pb-2">
                   <h2 className="text-lg font-semibold">AI scan &amp; review</h2>
-                  <p>
+                  <p className="text-sm text-muted-foreground">
                     Pick which transactions to analyze. Existing rules apply first; the AI agent reviews the rest. You'll preview changes before anything is saved.
                   </p>
                 </div>
@@ -1109,7 +1109,7 @@ const Transactions = () => {
             <>
               <div className="px-6 pt-6 pb-2">
                 <h2 className="text-lg font-semibold">Analyzing transactions…</h2>
-                <p>
+                <p className="text-sm text-muted-foreground">
                   Applying rules and asking the AI agent to review the remaining merchants.
                 </p>
               </div>
@@ -1132,7 +1132,7 @@ const Transactions = () => {
             <>
               <div className="px-6 pt-6 pb-2">
                 <h2 className="text-lg font-semibold">Review proposed changes</h2>
-                <p>
+                <p className="text-sm text-muted-foreground">
                   {previewItems.length === 0
                     ? "No category changes are needed."
                     : `${previewItems.length - excludedFromPreview.size} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. Uncheck any you'd like to skip.`}
@@ -1194,7 +1194,7 @@ const Transactions = () => {
             <>
               <div className="px-6 pt-6 pb-2">
                 <h2 className="text-lg font-semibold">Applying changes…</h2>
-                <p>Updating your transactions.</p>
+                <p className="text-sm text-muted-foreground">Updating your transactions.</p>
               </div>
               <div className="px-6 py-6 space-y-3">
                 <Progress
@@ -1216,7 +1216,7 @@ const Transactions = () => {
                   <CheckCircle2 className="h-5 w-5 text-foreground/80" />
                   Scan complete
                 </h2>
-                <p>
+                <p className="text-sm text-muted-foreground">
                   Categorized {lastApplied.length} transaction{lastApplied.length === 1 ? "" : "s"} out of {scanTotalConsidered} considered.
                 </p>
               </div>
