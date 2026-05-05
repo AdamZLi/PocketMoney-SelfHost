@@ -32,7 +32,7 @@ const Dashboard = () => {
         .from("transactions")
         .select("id,date,name,amount,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: false })
-        .limit(10);
+        .limit(25);
       if (error) throw error;
       return data ?? [];
     },
