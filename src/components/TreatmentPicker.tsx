@@ -194,15 +194,25 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
                   }
                   className="h-8"
                 />
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  className="h-8 text-xs"
-                  onClick={() => setDraftMeta({ ...draftMeta, your_share: Math.abs(amount) / 2 })}
-                >
-                  Half
-                </Button>
+              </div>
+              <div className="flex gap-1 mt-1.5">
+                {[25, 50, 75].map((pct) => (
+                  <Button
+                    key={pct}
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="h-7 text-xs flex-1"
+                    onClick={() =>
+                      setDraftMeta({
+                        ...draftMeta,
+                        your_share: +(Math.abs(amount) * (pct / 100)).toFixed(2),
+                      })
+                    }
+                  >
+                    {pct}%
+                  </Button>
+                ))}
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Total {Math.abs(amount).toFixed(2)} · Others owe{" "}
