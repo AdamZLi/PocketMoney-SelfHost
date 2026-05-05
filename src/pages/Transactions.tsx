@@ -79,6 +79,55 @@ const Transactions = () => {
   const [renaming, setRenaming] = useState(false);
   const [creatingAlias, setCreatingAlias] = useState(false);
 
+  // Manual transaction entry
+  const [addOpen, setAddOpen] = useState(false);
+  const [addSaving, setAddSaving] = useState(false);
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const [addForm, setAddForm] = useState({
+    date: todayStr,
+    name: "",
+    amount: "",
+    account_id: "none",
+    category_id: "none",
+    note: "",
+  });
+
+  function resetAddForm() {
+    setAddForm({ date: todayStr, name: "", amount: "", account_id: "none", category_id: "none", note: "" });
+  }
+
+  async function submitAddTransaction() {
+    const name = addForm.name.trim();
+    const amt = Number(addForm.amount);
+    if (!name) { toast({ title: "Merchant name required", variant: "destructive" }); return; }
+    if (!addForm.date) { toast({ title: "Date required", variant: "destructive" }); return; }
+    if (!Number.isFinite(amt) || amt === 0) { toast({ title: "Enter a non-zero amount", variant: "destructive" }); return; }
+    setAddSaving(true);
+    try {
+      const { error } = await supabase.from("transactions").insert({
+        date: addForm.date,
+        name,
+        amount: amt,
+        account_id: addForm.account_id === "none" ? null : addForm.account_id,
+        category_id: addForm.category_id === "none" ? null : addForm.category_id,
+        note: addForm.note.trim() || null,
+        source: "manual",
+        status: "posted",
+      } as any);
+      if (error) throw error;
+      toast({ title: "Transaction added" });
+      setAddOpen(false);
+      resetAddForm();
+      qc.invalidateQueries({ queryKey: ["txns"] });
+      qc.invalidateQueries({ queryKey: ["txns", "month-review-summary"] });
+      qc.invalidateQueries({ queryKey: ["categories", "usage"] });
+    } catch (e: any) {
+      toast({ title: "Add failed", description: e.message ?? String(e), variant: "destructive" });
+    } finally {
+      setAddSaving(false);
+    }
+  }
+
   async function submitRename() {
     if (!renameTarget) return;
     const newName = renameValue.trim();
