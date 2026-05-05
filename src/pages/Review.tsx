@@ -143,12 +143,34 @@ const Review = () => {
 
   const totalOwed = visibleGroups.reduce((s, g) => s + g.total, 0);
 
-  async function markSettled(t: Txn) {
-    const meta = { ...(t.treatment_meta ?? {}), reimbursement_status: "settled" as const };
-    const { error } = await supabase
-      .from("transactions")
-      .update({ treatment_meta: meta })
-      .eq("id", t.id);
+  // For split-part rows, we need to fetch the parent txn meta and update only the part.
+  async function applyStatus(
+    t: Txn & { partIndex?: number },
+    field: "reimbursement_status" | "refund_status",
+    value: "settled" | "received",
+  ) {
+    if (typeof t.partIndex === "number") {
+      const { data: parent } = await supabase
+        .from("transactions")
+        .select("treatment_meta")
+        .eq("id", t.id)
+        .single();
+      const parentMeta: TreatmentMeta = (parent?.treatment_meta ?? {}) as TreatmentMeta;
+      const parts = [...(parentMeta.parts ?? [])];
+      const p = parts[t.partIndex];
+      if (!p) return { error: { message: "Part not found" } };
+      parts[t.partIndex] = { ...p, meta: { ...(p.meta ?? {}), [field]: value } };
+      return supabase
+        .from("transactions")
+        .update({ treatment_meta: { ...parentMeta, parts } })
+        .eq("id", t.id);
+    }
+    const meta = { ...(t.treatment_meta ?? {}), [field]: value };
+    return supabase.from("transactions").update({ treatment_meta: meta }).eq("id", t.id);
+  }
+
+  async function markSettled(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "reimbursement_status", "settled");
     if (error) toast.error(error.message);
     else {
       toast.success("Marked settled");
@@ -156,22 +178,16 @@ const Review = () => {
     }
   }
 
-  async function markGroupSettled(group: { person: string; txns: Txn[] }) {
-    const ids = group.txns.map((t) => t.id);
+  async function markGroupSettled(group: { person: string; txns: (Txn & { partIndex?: number })[] }) {
     for (const t of group.txns) {
-      const meta = { ...(t.treatment_meta ?? {}), reimbursement_status: "settled" as const };
-      await supabase.from("transactions").update({ treatment_meta: meta }).eq("id", t.id);
+      await applyStatus(t, "reimbursement_status", "settled");
     }
-    toast.success(`Marked ${ids.length} settled with ${group.person}`);
+    toast.success(`Marked ${group.txns.length} settled with ${group.person}`);
     qc.invalidateQueries({ queryKey: ["review"] });
   }
 
-  async function markRefundReceived(t: Txn) {
-    const meta = { ...(t.treatment_meta ?? {}), refund_status: "received" as const };
-    const { error } = await supabase
-      .from("transactions")
-      .update({ treatment_meta: meta })
-      .eq("id", t.id);
+  async function markRefundReceived(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "refund_status", "received");
     if (error) toast.error(error.message);
     else {
       toast.success("Marked refunded");
