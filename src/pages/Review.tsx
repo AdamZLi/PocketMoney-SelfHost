@@ -27,37 +27,75 @@ const Review = () => {
   const [personFilter, setPersonFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
 
-  // Pending splits (people owe me)
+  // Pending splits (people owe me) — includes both whole-txn reimbursables AND
+  // sub-parts of "split" transactions whose part is reimbursable + pending.
   const { data: splits = [] } = useQuery({
     queryKey: ["review", "reimbursable_pending"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
         .select("id,date,name,amount,treatment,treatment_meta")
-        .eq("treatment", "reimbursable")
+        .in("treatment", ["reimbursable", "split"])
         .order("date", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return ((data ?? []) as Txn[]).filter(
-        (t) => (t.treatment_meta?.reimbursement_status ?? "pending") === "pending",
-      );
+      const out: (Txn & { partIndex?: number; partLabel?: string; partAmount?: number })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "reimbursable") {
+          if ((row.treatment_meta?.reimbursement_status ?? "pending") === "pending") {
+            out.push(row);
+          }
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "reimbursable") return;
+            if ((p.meta?.reimbursement_status ?? "pending") !== "pending") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              partIndex: i,
+              partLabel: p.label,
+              partAmount: p.amount,
+              amount: p.amount,
+            });
+          });
+        }
+      }
+      return out;
     },
   });
 
-  // Pending refundables
+  // Pending refundables (whole-txn + split parts)
   const { data: refunds = [] } = useQuery({
     queryKey: ["review", "refundable_pending"],
     queryFn: async () => {
       const { data, error } = await supabase
         .from("transactions")
         .select("id,date,name,amount,treatment,treatment_meta")
-        .eq("treatment", "refundable")
+        .in("treatment", ["refundable", "split"])
         .order("date", { ascending: false })
         .limit(1000);
       if (error) throw error;
-      return ((data ?? []) as Txn[]).filter(
-        (t) => (t.treatment_meta?.refund_status ?? "pending") === "pending",
-      );
+      const out: (Txn & { partIndex?: number; partLabel?: string })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "refundable") {
+          if ((row.treatment_meta?.refund_status ?? "pending") === "pending") out.push(row);
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "refundable") return;
+            if ((p.meta?.refund_status ?? "pending") !== "pending") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              amount: p.amount,
+              partIndex: i,
+              partLabel: p.label,
+            });
+          });
+        }
+      }
+      return out;
     },
   });
 
@@ -72,7 +110,7 @@ const Review = () => {
 
   // Group splits by person
   const grouped = useMemo(() => {
-    const map = new Map<string, { person: string; txns: Txn[]; total: number }>();
+    const map = new Map<string, { person: string; txns: typeof splits; total: number }>();
     splits.forEach((t) => {
       const person = (t.treatment_meta?.owed_by || "Unassigned").trim() || "Unassigned";
       const share =
