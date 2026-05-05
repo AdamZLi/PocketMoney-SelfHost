@@ -180,7 +180,7 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           <div className="space-y-2 border-t pt-3">
             <div>
               <Label className="text-xs text-muted-foreground">Your share</Label>
-              <div className="flex gap-2 mt-1">
+              <div className="flex gap-2 mt-1 items-center">
                 <Input
                   type="number"
                   step="0.01"
@@ -192,27 +192,31 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
                   onChange={(e) =>
                     setDraftMeta({ ...draftMeta, your_share: parseFloat(e.target.value) })
                   }
-                  className="h-8"
+                  className="h-8 flex-1"
                 />
-              </div>
-              <div className="flex gap-1 mt-1.5">
-                {[25, 50, 75].map((pct) => (
-                  <Button
-                    key={pct}
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs flex-1"
-                    onClick={() =>
+                <div className="flex items-center gap-1">
+                  <Input
+                    type="number"
+                    min={0}
+                    max={100}
+                    step={1}
+                    placeholder="%"
+                    value={
+                      typeof draftMeta.your_share === "number" && Math.abs(amount) > 0
+                        ? Math.round((draftMeta.your_share / Math.abs(amount)) * 100)
+                        : 50
+                    }
+                    onChange={(e) => {
+                      const pct = Math.max(0, Math.min(100, parseInt(e.target.value) || 0));
                       setDraftMeta({
                         ...draftMeta,
                         your_share: +(Math.abs(amount) * (pct / 100)).toFixed(2),
-                      })
-                    }
-                  >
-                    {pct}%
-                  </Button>
-                ))}
+                      });
+                    }}
+                    className="h-8 w-16 text-center"
+                  />
+                  <span className="text-xs text-muted-foreground">%</span>
+                </div>
               </div>
               <p className="text-[10px] text-muted-foreground mt-1">
                 Total {Math.abs(amount).toFixed(2)} · Others owe{" "}
