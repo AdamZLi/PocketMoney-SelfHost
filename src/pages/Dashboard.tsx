@@ -130,27 +130,66 @@ const Dashboard = () => {
       </Card>
 
       <Card>
-        <CardHeader><CardTitle>Recent transactions</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0">
+          <CardTitle>Recent transactions</CardTitle>
+          <Link
+            to="/transactions"
+            className="inline-flex items-center gap-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
+          >
+            View all <ArrowUpRight className="h-3.5 w-3.5" />
+          </Link>
+        </CardHeader>
         <CardContent>
           {recent.length === 0 ? (
             <p className="text-sm text-muted-foreground">No transactions yet.</p>
           ) : (
-            <div className="divide-y">
-              {(recent as any[]).map((t) => (
-                <div key={t.id} className="flex items-center justify-between py-2.5">
-                  <div>
-                    <div className="font-medium text-sm">{t.name}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {fmtDate(t.date)} · {t.accounts?.name ?? "—"}{t.accounts?.mask ? ` ····${t.accounts.mask}` : ""}
+            (() => {
+              const today = new Date(); today.setHours(0, 0, 0, 0);
+              const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+              const dayLabel = (dk: string) => {
+                const [y, m, d] = dk.split("-").map(Number);
+                const dt = new Date(y, m - 1, d);
+                if (dt.getTime() === today.getTime()) return "Today";
+                if (dt.getTime() === yesterday.getTime()) return "Yesterday";
+                return dt.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+              };
+              const days = new Map<string, any[]>();
+              for (const t of recent as any[]) {
+                const dk = String(t.date).slice(0, 10);
+                if (!days.has(dk)) days.set(dk, []);
+                days.get(dk)!.push(t);
+              }
+              return (
+                <div>
+                  {[...days.entries()].map(([dk, rows]) => (
+                    <div key={dk}>
+                      <div className="px-1 pt-4 pb-2 first:pt-0">
+                        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                          {dayLabel(dk)}
+                        </span>
+                      </div>
+                      {rows.map((t: any) => (
+                        <div
+                          key={t.id}
+                          className="grid grid-cols-[1fr_auto] gap-4 px-1 py-2.5 border-b border-border/40 items-center"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-sm font-medium truncate">{t.name}</div>
+                            <div className="text-xs text-muted-foreground truncate">
+                              {t.accounts?.name ?? "—"}{t.accounts?.mask ? ` ····${t.accounts.mask}` : ""}
+                              {t.categories?.name ? ` · ${t.categories.name}` : ""}
+                            </div>
+                          </div>
+                          <div className="text-sm font-medium tabular-nums text-right">
+                            {fmtCurrency(Number(t.amount))}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
-                  <div className="text-right">
-                    <div className="font-medium tabular-nums">{fmtCurrency(Number(t.amount))}</div>
-                    <div className="text-xs text-muted-foreground">{t.categories?.name ?? "Uncategorized"}</div>
-                  </div>
+                  ))}
                 </div>
-              ))}
-            </div>
+              );
+            })()
           )}
         </CardContent>
       </Card>
