@@ -1086,6 +1086,19 @@ const Transactions = () => {
                     </Select>
                   </div>
                   <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Category</Label>
+                    <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                        {(categories as any[]).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Month</Label>
                     <Select value={scanMonth || "all"} onValueChange={(v) => setScanMonth(v === "all" ? "" : v)}>
                       <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
