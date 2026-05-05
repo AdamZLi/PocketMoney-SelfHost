@@ -59,6 +59,8 @@ const Transactions = () => {
   const [scanAccountId, setScanAccountId] = useState<string>("all");
   // Month in YYYY-MM format, "" means all months
   const [scanMonth, setScanMonth] = useState<string>("");
+  // "all" = any category, "uncategorized" = null only, otherwise a category id
+  const [scanCategoryId, setScanCategoryId] = useState<string>("all");
   type PreviewItem = {
     txnId: string;
     name: string;
@@ -607,6 +609,8 @@ const Transactions = () => {
       if (scanReviewed === "unreviewed") q = q.eq("reviewed", false);
       else if (scanReviewed === "reviewed") q = q.eq("reviewed", true);
       if (scanAccountId !== "all") q = q.eq("account_id", scanAccountId);
+      if (scanCategoryId === "uncategorized") q = q.is("category_id", null);
+      else if (scanCategoryId !== "all") q = q.eq("category_id", scanCategoryId);
       if (scanMonth) {
         // scanMonth is YYYY-MM
         const [y, m] = scanMonth.split("-").map(Number);
@@ -1077,6 +1081,19 @@ const Transactions = () => {
                           <SelectItem key={a.id} value={a.id}>
                             {a.name}{a.mask ? ` ····${a.mask}` : ""}
                           </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Category</Label>
+                    <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All categories</SelectItem>
+                        <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                        {(categories as any[]).map((c) => (
+                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
