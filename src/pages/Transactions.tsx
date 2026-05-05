@@ -923,7 +923,7 @@ const Transactions = () => {
             ) : (
               <Sparkles className="h-3.5 w-3.5" />
             )}
-            {scanning ? "Scanning…" : "AI scan & categorize"}
+            {scanning ? "Scanning…" : "AI scan & review"}
           </Button>
         </div>
       </div>
