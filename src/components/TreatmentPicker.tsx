@@ -89,7 +89,7 @@ export function TreatmentPicker({ treatment, meta, amount, date, onSave, classNa
           <ChevronDown className="h-3 w-3 shrink-0 opacity-60" />
         </button>
       </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-3">
+      <PopoverContent align="end" className="w-80 p-3 max-h-[min(80vh,600px)] overflow-y-auto">
         <div className="space-y-1.5 mb-3">
           {OPTIONS.map((o) => {
             const Icon = o.icon;
