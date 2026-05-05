@@ -55,10 +55,10 @@ const Transactions = () => {
   const [matchCount, setMatchCount] = useState<number>(0);
   const [applying, setApplying] = useState(false);
   const [scanOpen, setScanOpen] = useState(false);
-  const [scanCategoryId, setScanCategoryId] = useState<string>("uncategorized");
+  const [scanReviewed, setScanReviewed] = useState<"unreviewed" | "reviewed" | "all">("unreviewed");
   const [scanAccountId, setScanAccountId] = useState<string>("all");
-  const [scanFrom, setScanFrom] = useState<string>("");
-  const [scanTo, setScanTo] = useState<string>("");
+  // Month in YYYY-MM format, "" means all months
+  const [scanMonth, setScanMonth] = useState<string>("");
   type PreviewItem = {
     txnId: string;
     name: string;
