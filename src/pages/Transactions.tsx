@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate } from "@/lib/format";
@@ -85,6 +86,7 @@ const Transactions = () => {
 
   // Transaction details side panel
   const [detailsId, setDetailsId] = useState<string | null>(null);
+  const [detailsRecord, setDetailsRecord] = useState<any | null>(null);
   const [detailsDraft, setDetailsDraft] = useState<{ name: string; date: string; note: string; amount: string }>({ name: "", date: "", note: "", amount: "" });
   const [detailsOriginalName, setDetailsOriginalName] = useState<string>("");
   const [savingDetails, setSavingDetails] = useState(false);
@@ -140,6 +142,7 @@ const Transactions = () => {
 
   function openDetails(t: any) {
     setDetailsId(t.id);
+    setDetailsRecord(t);
     setDetailsOriginalName(t.name);
     setDetailsDraft({
       name: t.name ?? "",
@@ -151,7 +154,7 @@ const Transactions = () => {
 
   async function saveDetails() {
     if (!detailsId) return;
-    const t = (txns as any[]).find((x) => x.id === detailsId);
+    const t = (txns as any[]).find((x) => x.id === detailsId) ?? detailsRecord;
     if (!t) return;
     const updates: Record<string, any> = {};
     const edits: { field_changed: string; old_value: any; new_value: any }[] = [];
@@ -304,6 +307,25 @@ const Transactions = () => {
       setAliasPrompt(null);
     }
   }
+
+  // Open side panel from ?edit=<id> URL param (e.g., from Dashboard).
+  const [searchParams, setSearchParams] = useSearchParams();
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (!editId || detailsId === editId) return;
+    (async () => {
+      const { data } = await supabase
+        .from("transactions")
+        .select("id,date,name,amount,note,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,category_id,excluded,accounts(name,mask)")
+        .eq("id", editId)
+        .maybeSingle();
+      if (data) openDetails(data as any);
+      const next = new URLSearchParams(searchParams);
+      next.delete("edit");
+      setSearchParams(next, { replace: true });
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
 
   const { data: accounts = [] } = useQuery({
@@ -1646,7 +1668,7 @@ const Transactions = () => {
 
       {/* Transaction details side panel (non-modal: page behind stays scrollable) */}
       {(() => {
-        const t = detailsId ? (txns as any[]).find((x) => x.id === detailsId) : null;
+        const t = detailsId ? ((txns as any[]).find((x) => x.id === detailsId) ?? detailsRecord) : null;
         if (!t) return null;
         return (
           <aside
