@@ -1021,20 +1021,21 @@ const Transactions = () => {
         </DialogContent>
       </Dialog>
 
-      <Sheet
-        open={scanOpen}
-        onOpenChange={(o) => {
-          if (scanning) return;
-          setScanOpen(o);
-          if (!o) resetScanDialog();
-        }}
-      >
-        <SheetContent
-          side="right"
-          className="w-full sm:max-w-md flex flex-col p-0 gap-0"
-          // Prevent the overlay from blocking page interaction (lightweight panel feel)
-          onInteractOutside={(e) => { if (scanning) e.preventDefault(); }}
+      {scanOpen && (
+        <aside
+          className="fixed top-0 right-0 z-40 h-screen w-full sm:max-w-md border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
+          role="dialog"
+          aria-label="AI scan and review"
         >
+          <button
+            type="button"
+            onClick={() => { if (!scanning) { setScanOpen(false); resetScanDialog(); } }}
+            className="absolute right-4 top-4 rounded-sm opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
+            aria-label="Close"
+          >
+            <X className="h-4 w-4" />
+          </button>
+
           {scanStage === "configure" && (() => {
             // Build month options from loaded transactions (most recent first)
             const monthSet = new Set<string>();
