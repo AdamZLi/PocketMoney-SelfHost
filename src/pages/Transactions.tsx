@@ -154,7 +154,7 @@ const Transactions = () => {
 
   async function saveDetails() {
     if (!detailsId) return;
-    const t = (txns as any[]).find((x) => x.id === detailsId);
+    const t = (txns as any[]).find((x) => x.id === detailsId) ?? detailsRecord;
     if (!t) return;
     const updates: Record<string, any> = {};
     const edits: { field_changed: string; old_value: any; new_value: any }[] = [];
