@@ -2148,7 +2148,11 @@ const Transactions = () => {
                         </Badge>
                       )}
                     </div>
-                    {catDiffers && (
+                    {proposal.unverified && (
+                      <div className="rounded border border-confidence-low/40 bg-confidence-low/10 px-2 py-1 text-[11px] text-foreground/80">
+                        ⚠ Reason may not match this merchant — please verify before accepting.
+                      </div>
+                    )}
                       <div className="flex items-center gap-2">
                         <div className="flex-1 text-xs text-muted-foreground min-w-0 truncate">
                           <span className="opacity-70">Category:</span>{" "}
