@@ -1174,9 +1174,11 @@ const Transactions = () => {
               if (!t.reviewed) s.unreviewed++;
               stats.set(ym, s);
             }
-            const monthOpts = [...stats.entries()]
+            const allMonthOpts = [...stats.entries()]
               .map(([ym, s]) => ({ ym, ...s }))
               .sort((a, b) => (a.ym < b.ym ? 1 : -1));
+            const monthOpts = scanShowAllMonths ? allMonthOpts : allMonthOpts.slice(0, 6);
+            const hiddenCount = allMonthOpts.length - monthOpts.length;
             const monthLabel = (ym: string) => {
               const [y, m] = ym.split("-").map(Number);
               return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
@@ -1196,7 +1198,7 @@ const Transactions = () => {
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Month</Label>
-                    <Select value={scanMonth || "all"} onValueChange={(v) => setScanMonth(v === "all" ? "" : v)}>
+                    <Select value={scanMonth || ""} onValueChange={(v) => setScanMonth(v)}>
                       <SelectTrigger className="h-10"><SelectValue placeholder="Select a month" /></SelectTrigger>
                       <SelectContent>
                         {monthOpts.map(({ ym, total, unreviewed }) => {
@@ -1208,14 +1210,22 @@ const Transactions = () => {
                             <SelectItem key={ym} value={ym}>
                               <span className="flex items-center gap-2">
                                 <span>{monthLabel(ym)}</span>
-                                <span className={unreviewed === 0 ? "text-muted-foreground text-xs" : "text-muted-foreground text-xs"}>
+                                <span className="text-muted-foreground text-xs">
                                   · {suffix}
                                 </span>
                               </span>
                             </SelectItem>
                           );
                         })}
-                        <SelectItem value="all">All months</SelectItem>
+                        {hiddenCount > 0 && (
+                          <button
+                            type="button"
+                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setScanShowAllMonths(true); }}
+                            className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                          >
+                            Show {hiddenCount} more {hiddenCount === 1 ? "month" : "months"}
+                          </button>
+                        )}
                       </SelectContent>
                     </Select>
                   </div>
