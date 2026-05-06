@@ -1285,9 +1285,8 @@ const Transactions = () => {
                                   const oldCat = oldCatName(p.oldCategoryId);
                                   const catChanged = p.newCategoryId !== p.oldCategoryId;
                                   const trChanged = p.newTreatment !== p.oldTreatment;
+                                  const txn = (txns as any[]).find((x) => x.id === p.txnId);
                                   return (
-                                    const txn = (txns as any[]).find((x) => x.id === p.txnId);
-                                    return (
                                     <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
                                         className="mt-1"
