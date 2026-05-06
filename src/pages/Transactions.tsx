@@ -1243,9 +1243,9 @@ const Transactions = () => {
                 <div className="px-6 pt-6 pb-2">
                   <h2 className="text-lg font-semibold">Review proposed changes</h2>
                   <p className="text-sm text-muted-foreground">
-                    {previewItems.length === 0
-                      ? "No changes proposed."
-                      : `${selectedCount} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. High-confidence items will be marked reviewed automatically.`}
+                    {changeItems.length === 0
+                      ? `No changes proposed. Agent confirmed all ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} as already correct.`
+                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered (${noChangeItems.length} confirmed as no change). High-confidence items will be marked reviewed automatically.`}
                   </p>
                 </div>
                 {previewItems.length > 0 && (
