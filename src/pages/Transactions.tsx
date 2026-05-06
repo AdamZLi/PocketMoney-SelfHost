@@ -2080,35 +2080,41 @@ const Transactions = () => {
                   if (catDiffers) await applyCategoryOnly();
                   if (trDiffers) await applyTreatmentOnly();
                 };
-                const dismissProposal = async () => {
-                  if (catDiffers) {
-                    await recordFeedback("category", "dismissed", { category_id: curCat });
-                  }
-                  if (trDiffers) {
-                    await recordFeedback("treatment", "dismissed", { treatment: curTr });
-                  }
-                  // Keep the item in the preview so the user can still mark it as
-                  // reviewed after any manual touch-up. We collapse the proposal
-                  // down to the current txn state so no diff is shown.
-                  setPreviewItems((prev) => prev.map((p) => (
-                    p.txnId === t.id
-                      ? {
-                          ...p,
-                          newCategoryId: curCat,
-                          newCategoryName: oldCatName,
-                          newTreatment: curTr,
-                          newTreatmentMeta: (t.treatment_meta ?? {}) as TreatmentMeta,
-                          reason: "Dismissed — pending manual review",
-                          source: "ai",
-                          isNoChange: true,
-                          bucket: "high",
-                        }
-                      : p
-                  )));
+                // Drop just one field of the proposal (category or treatment) while
+                // keeping the txn in the review list and the other field intact.
+                const dismissField = async (field: "category" | "treatment") => {
+                  await recordFeedback(
+                    field,
+                    "dismissed",
+                    field === "category" ? { category_id: curCat } : { treatment: curTr },
+                  );
+                  setPreviewItems((prev) => prev.map((p) => {
+                    if (p.txnId !== t.id) return p;
+                    const next = { ...p };
+                    if (field === "category") {
+                      next.newCategoryId = curCat;
+                      next.newCategoryName = oldCatName;
+                    } else {
+                      next.newTreatment = curTr;
+                      next.newTreatmentMeta = (t.treatment_meta ?? {}) as TreatmentMeta;
+                    }
+                    const stillCat = next.newCategoryId !== curCat;
+                    const stillTr = next.newTreatment !== curTr;
+                    if (!stillCat && !stillTr) {
+                      next.isNoChange = true;
+                      next.bucket = "high";
+                      next.reason = "Dismissed — pending manual review";
+                    }
+                    return next;
+                  }));
                   setExcludedFromPreview((prev) => {
-                    const next = new Set(prev); next.delete(t.id); return next;
+                    const n = new Set(prev); n.delete(t.id); return n;
                   });
-                  toast({ title: "Proposal dismissed", description: "Item stays in the review list — mark it reviewed when ready." });
+                  toast({ title: `${field === "category" ? "Category" : "Treatment"} suggestion dismissed` });
+                };
+                const dismissAll = async () => {
+                  if (catDiffers) await dismissField("category");
+                  if (trDiffers) await dismissField("treatment");
                 };
                 return (
                   <div className="rounded-md border bg-muted/30 p-3 space-y-2.5">
@@ -2130,6 +2136,9 @@ const Transactions = () => {
                           <span className="opacity-70">Category:</span>{" "}
                           {oldCatName} → <span className="text-foreground">{proposal.newCategoryName}</span>
                         </div>
+                        <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px] text-muted-foreground" onClick={() => dismissField("category")}>
+                          Dismiss
+                        </Button>
                         <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={applyCategoryOnly}>
                           Apply
                         </Button>
@@ -2141,6 +2150,9 @@ const Transactions = () => {
                           <span className="opacity-70">Treatment:</span>{" "}
                           {curTr} → <span className="text-foreground">{proposal.newTreatment}</span>
                         </div>
+                        <Button type="button" size="sm" variant="ghost" className="h-6 px-2 text-[11px] text-muted-foreground" onClick={() => dismissField("treatment")}>
+                          Dismiss
+                        </Button>
                         <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={applyTreatmentOnly}>
                           Apply
                         </Button>
