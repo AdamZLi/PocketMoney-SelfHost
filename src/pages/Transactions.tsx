@@ -666,6 +666,7 @@ const Transactions = () => {
               bucket: "high",
               reason: "Matched a saved category rule.",
               source: "rule",
+              isNoChange: false,
             });
           }
         } else {
