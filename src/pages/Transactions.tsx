@@ -1228,14 +1228,16 @@ const Transactions = () => {
               ring: string;
               items: PreviewItem[];
             }> = [
-              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high") },
+              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high" && !p.isNoChange) },
               { key: "medium", label: "Medium confidence", dot: "bg-confidence-medium", ring: "border-confidence-medium/30", items: previewItems.filter((p) => p.bucket === "medium") },
               { key: "low", label: "Low confidence", dot: "bg-confidence-low", ring: "border-confidence-low/30", items: previewItems.filter((p) => p.bucket === "low") },
             ];
+            const noChangeItems = previewItems.filter((p) => p.isNoChange);
+            const changeItems = previewItems.filter((p) => !p.isNoChange);
             const oldCatName = (id: string | null) =>
               id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
             const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
-            const selectedCount = previewItems.length - excludedFromPreview.size;
+            const selectedCount = changeItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
