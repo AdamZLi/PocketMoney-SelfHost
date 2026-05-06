@@ -1,188 +1,78 @@
-# AI Review Agent — Plan
+## What you're actually seeing
 
-## Goal
+Two symptoms, **one underlying cause**:
 
-Replace the current "suggest categories" flow with a dedicated **AI Review Agent** that, for each transaction in the scan:
+1. The "State Farm" row says **`Insurance → Restaurants`** with the reason *"A&W is a global fast food brand."*
+2. Open the same row in the editor: it says **AI proposal · Applied** (i.e. no diff).
 
-1. Proposes a **category** (from the user's taxonomy)
-2. Proposes a **treatment** (`normal`, `excluded`, `refundable`, `reimbursable`, `amortized`) with the meta needed to apply it
-3. Returns a **confidence score 0–1** with brief reasoning
-4. Learns from the user's accept/reject choices so future suggestions improve
+These two views read from the same array (`previewItems`) and look up the proposal the same way:
 
-The preview panel groups proposals into **High / Medium / Low** confidence buckets, auto-marks high-confidence items as reviewed, and lets the user one-click expand each bucket to verify or override.
-
----
-
-## 1. Agent specification (for your review BEFORE implementation)
-
-Two new docs in `docs/agents/`:
-
-### `docs/agents/review-agent.md`
-
-- Mission, scope, inputs/outputs
-- Confidence rubric (high ≥0.9, medium 0.5–0.9, low <0.5) with concrete examples
-- Treatment decision rules (when to suggest refundable vs reimbursable vs amortized vs normal vs excluded)
-- Learning loop: how `transaction_edits` + a new `agent_feedback` table feed back into the prompt
-- Failure / fallback behavior (null category, "normal" treatment as safe default)
-
-### `docs/agents/review-agent.system-prompt.md`
-
-The full system prompt the edge function will send. Draft outline:
-
-```text
-You are the Review Agent — a specialized personal-finance review assistant.
-For each transaction you receive, return:
-  - category_id (from the provided taxonomy, or null)
-  - treatment ("normal" | "excluded" | "refundable" | "reimbursable" | "amortized")
-  - treatment_meta (only the fields the chosen treatment needs)
-  - confidence (0..1)
-  - reason (≤140 chars, plain language)
-
-Confidence rubric:
-  ≥ 0.90  Strong evidence: exact merchant match in user history, or
-          unambiguous brand (Netflix, Uber, Whole Foods…). Auto-applies.
-  0.50–0.89 Plausible but ambiguous merchant or amount pattern. Needs review.
-  < 0.50  Unknown merchant, no history, conflicting signals. Needs review.
-
-Treatment heuristics:
-  refundable    — large purchase from retailer with return policy, recent date,
-                  user history shows similar pattern returned
-  reimbursable  — work travel, group dinners, shared subscriptions
-  amortized     — annual subscriptions, insurance premiums, travel, large purchase
-  excluded      — internal transfers, credit-card payments, stock buys
-  split         — split with friends on group activities, rent, large appliances
-  normal        — default
-
-Learning input you receive:
-  - past_corrections: list of {merchant, ai_suggested, user_chose, field}
-  - user_treatments_history: how often this merchant was given each treatment
-
-Hard rules:
-  - Only return category_ids from the provided list.
-  - Never invent treatments outside the enum.
-  - If unsure on category, return null and confidence ≤ 0.4.
-  - Output exactly via the submit_review tool call. No prose.
+```ts
+const proposal = previewItems.find((p) => p.txnId === t.id);
 ```
 
-You'll review and edit both files; implementation begins only after sign-off.
+If both views agreed on a single proposal, they'd show consistent diffs. They don't — which means **`previewItems` contains more than one entry for the same `txnId`**, and `.find()` returns the first one in each context.
 
----
+## Why duplicate entries get into `previewItems`
 
-## 2. Backend — new edge function
+The agent (Gemini, called from `supabase/functions/review-transactions/index.ts`) is asked for "exactly one proposal per input transaction" and we trust the model to honour that. We don't validate. The frontend then iterates the returned `proposals` array and pushes one `PreviewItem` per proposal, with no de-dupe by `txnId`:
 
-`supabase/functions/review-transactions/index.ts`
-
-- Replaces `suggest-categories` for the scan flow (old function kept for backward compat for now).
-- Inputs:
-  - `transactions`: `{id, name, amount, date, account_id}[]`
-  - `categories`: full taxonomy
-  - `existing`: per-txn `{category_id, treatment, treatment_meta}` so the agent can decide whether to propose a *change*
-- Pulls per-txn context server-side:
-  - Recent `transaction_edits` for the same merchant (what the user changed last time)
-  - Past treatments distribution for that merchant
-  - Recent `agent_feedback` rows (see below)
-- Calls Lovable AI Gateway (`google/gemini-3-flash-preview` default; configurable) with a `submit_review` tool whose schema includes `category_id`, `treatment`, `treatment_meta`, `confidence`, `reason`.
-- Validates output (enum check, valid category id, treatment_meta fields match the chosen treatment), and clamps confidence.
-- Returns `{ proposals: [...], skipped: [...] }`.
-
-### Schema migration
-
-New table `agent_feedback`:
-
-
-| col            | type                                           |
-| -------------- | ---------------------------------------------- |
-| id             | uuid pk                                        |
-| transaction_id | uuid                                           |
-| merchant_name  | text                                           |
-| field          | text (`category` or `treatment`)               |
-| ai_value       | jsonb                                          |
-| ai_confidence  | numeric                                        |
-| user_action    | text (`accepted` / `overridden` / `dismissed`) |
-| user_value     | jsonb (null if accepted)                       |
-| created_at     | timestamptz default now()                      |
-
-
-Open RLS (matches existing project pattern).
-
-This table is what the agent reads on subsequent runs to "remember" user preferences.
-
----
-
-## 3. Frontend — preview UI changes
-
-In `src/pages/Transactions.tsx` scan panel, the **preview stage** becomes:
-
-```text
-┌─ Preview proposed changes ──────────────────────┐
-│ 122 transactions reviewed by AI                 │
-│                                                 │
-│  ● High confidence   80 items   [auto-marked ✓] │  ← green
-│     ▸ Click to expand and verify                │
-│                                                 │
-│  ● Medium confidence 30 items   [needs review]  │  ← yellow
-│     ▾ expanded list of rows shown               │
-│        ☐ Trader Joe's   $42  Groceries · normal │
-│        ☐ Best Buy      $610  Electronics ·     │
-│                              refundable (45d)   │
-│                                                 │
-│  ● Low confidence    12 items   [needs review]  │  ← red
-│     ▾ expanded list                             │
-│                                                 │
-│  [ Apply 122 changes ]   [ Back ]               │
-└─────────────────────────────────────────────────┘
+```ts
+for (const p of proposals) {
+  const t = chunk.find((x) => x.id === p.id);
+  if (!t) continue;
+  …
+  items.push({ txnId: t.id, …, reason: p.reason ?? "" });
+}
 ```
 
-- Buckets are collapsible; high-confidence is collapsed by default, medium + low expanded by default.
-- Each row shows: merchant, amount, **category change** (`old → new`), **treatment change** (`old → new`), and a one-line AI reason on hover.
-- Each row has a checkbox. High-confidence items default checked + `reviewed=true` on apply. Medium/low default checked but `reviewed=false`, so the user is nudged to look at them after.
-- Per-row inline edit: click the proposed category or treatment to override before applying.
+So when the model duplicates an id (or hallucinates a reason from a neighbouring row), we faithfully render both — one as a "no change" Insurance verdict, the other as a wrong "Restaurants / A&W" verdict. Different views surface different copies, hence the contradiction.
 
-Bucket colors come from semantic tokens (no hardcoded colors). Plan adds these tokens to `index.css`:
+The same hole also lets through:
+- proposals whose `id` doesn't exist in the input batch (model hallucinates a uuid),
+- reasons that talk about a totally different merchant than the row's name.
 
-- `--confidence-high` (green family)
-- `--confidence-medium` (amber)
-- `--confidence-low` (red)
-…with matching `bg-*/10` surfaces and `text-*` foregrounds.
+## Proposed systematic fix
 
----
+Three layers — server hardens, client hardens, UI degrades gracefully.
 
-## 4. Apply step
+### 1. Server: validate + dedupe in `review-transactions/index.ts`
 
-When the user clicks **Apply**:
+After parsing `proposals` from the tool call:
 
-For each accepted proposal:
+- **Reject unknown ids.** Build `validInputIds = new Set(batch.map(t => t.id))`; drop any `p.id` not in it (today we silently keep them; client filters them out by `chunk.find`, which lets the duplicates survive).
+- **De-dupe by id.** If the model returns the same id twice, keep one entry and pick deterministically (e.g. the one with higher confidence, or the one whose `reason` token-overlaps the merchant name).
+- **Reason ↔ merchant sanity check.** For each surviving proposal, compare `reason` against the input txn's `name` (and account name): tokenise both, lower-case, strip punctuation. If the reason contains a *brand-like* token (capitalised word ≥ 3 chars, or a word from a small known-brands list) that does not appear in the merchant string, **downgrade `confidence` to ≤ 0.4** and prepend a marker like `"⚠ unverified"` to the reason. This automatically pushes the row from High → Low and forces a human eyeball.
+- **Increase logs.** When we drop or downgrade, `console.warn` with both the txn name and the offending reason so we can monitor model drift over time.
 
-1. Update `transactions` with new `category_id`, `treatment`, `treatment_meta`, and `reviewed = (bucket === "high")`, `reviewed_at = now()`.
-2. Insert into `transaction_edits` (existing audit trail).
-3. Insert into `agent_feedback` with `user_action = "accepted"` (or `"overridden"` if the user changed the AI value before applying, capturing both `ai_value` and `user_value`).
-4. Skipped (unchecked) items get `agent_feedback` with `user_action = "dismissed"`.
+### 2. Client: dedupe + prefer the explanatory proposal
 
-This is what closes the learning loop.
+In `Transactions.tsx` after collecting `items`, before `setPreviewItems`:
 
----
+- Group `items` by `txnId`. Where there are duplicates:
+  - Prefer the entry whose `reason` mentions a token from `t.name` (avoids the "A&W on State Farm" case).
+  - Otherwise prefer the higher-confidence entry that proposes a real change over a "no change" one (so the user sees the actionable copy, not a stale "applied" one).
+- Same lookup in the editor and the list now returns the same proposal, so the "Applied" state is always consistent with the diff arrow shown on the row.
 
-## 5. Toolbar & wording
+### 3. UI: surface uncertainty when the agent is suspect
 
-- Button label stays **"AI scan & review"**.
-- Summary stage shows breakdown: `High 80 · Medium 30 · Low 12 · Overridden 5`.
+- In the row's reason line, if the server flagged the proposal as `unverified`, render the row in the **Low confidence** bucket regardless of the model's stated number, and show a small `⚠ Reason may not match merchant — please verify` hint above the diff arrows.
+- In the editor's AI-proposal card, when `unverified`, show the same hint and disable the auto-mark-reviewed shortcut until the user explicitly accepts or dismisses it.
 
----
+### Files we'd touch
 
-## Technical notes
+- `supabase/functions/review-transactions/index.ts` — id validation, dedupe, reason ↔ merchant check, downgrade rule, structured logs.
+- `src/pages/Transactions.tsx` — dedupe in the proposals → `previewItems` loop; thread an `unverified` flag through `PreviewItem`; render the warning in the row + editor card; force unverified items into the Low bucket.
+- `docs/agents/review-agent.md` and `docs/agents/review-agent.system-prompt.md` — document the new validation gate and the "reason MUST mention a token from the merchant name" rule (cheap nudge for the model itself).
 
-- New files:
-  - `docs/agents/review-agent.md`
-  - `docs/agents/review-agent.system-prompt.md`
-  - `supabase/functions/review-transactions/index.ts`
-- Migration: `agent_feedback` table + open RLS.
-- Edited: `src/pages/Transactions.tsx` (scan panel preview + apply), `src/index.css` (confidence tokens), `tailwind.config.ts` (expose tokens).
-- `src/lib/treatments.ts` already defines the `Treatment` enum and meta — agent output reuses it directly.
-- Old `suggest-categories` function is kept untouched for now; we can delete it in a follow-up once the new flow is verified.
+### Out of scope for this fix
 
----
+- Switching models, adding a second-pass verification call, or rebuilding the agent harness — keep this surgical.
+- Any change to how feedback is stored. The `agent_feedback` writes already key on `merchant_name` from the txn (not from the model), so dedupe there isn't needed.
 
-## Deliverable order after approval
+### Quick verification plan after implementation
 
-1. Write `docs/agents/review-agent.md` + `review-agent.system-prompt.md` and **stop for your review**.
-2. After you sign off on the agent doc, run the migration, build the edge function, then update the Transactions UI.
+1. Re-run "Scan & review" against the same 81 transactions.
+2. Confirm State Farm now shows either: (a) a single Insurance verdict with no diff, or (b) a single Restaurants verdict marked `⚠ unverified` and parked in the Low-confidence bucket.
+3. Open the row and confirm the editor's AI-proposal card matches the list (no more "Applied" mismatch).
+4. Spot-check three other rows with brand names in their merchant string (Venmo, Foodcellar, Con Ed) to ensure they aren't falsely flagged unverified.
