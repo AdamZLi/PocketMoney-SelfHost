@@ -1261,8 +1261,8 @@ const Transactions = () => {
                   <h2 className="text-lg font-semibold">Review proposed changes</h2>
                   <p className="text-sm text-muted-foreground">
                     {changeItems.length === 0
-                      ? `No changes proposed. Agent confirmed all ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} as already correct.`
-                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered (${noChangeItems.length} confirmed as no change). High-confidence items will be marked reviewed automatically.`}
+                      ? `No changes proposed. Confirming will mark all ${scanTotalConsidered} reviewed transaction${scanTotalConsidered === 1 ? "" : "s"} as reviewed.`
+                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected. All ${scanTotalConsidered} considered transaction${scanTotalConsidered === 1 ? "" : "s"} (${noChangeItems.length} no-change) will be marked as reviewed when you confirm.`}
                   </p>
                 </div>
                 {previewItems.length > 0 && (
