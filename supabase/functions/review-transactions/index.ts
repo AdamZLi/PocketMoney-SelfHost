@@ -287,25 +287,84 @@ Deno.serve(async (req) => {
       }
     }
 
-    const cleaned = proposals
-      .filter((p) => p && typeof p.id === "string")
-      .map((p) => {
-        const treatment: Treatment = TREATMENTS.includes(p.treatment) ? p.treatment : "normal";
-        const cat = p.category_id && validIds.has(p.category_id) ? p.category_id : null;
-        let confidence = Number(p.confidence);
-        if (!Number.isFinite(confidence)) confidence = 0.3;
-        confidence = Math.max(0, Math.min(1, confidence));
-        if (!cat) confidence = Math.min(confidence, 0.4);
-        const reason = String(p.reason ?? "").slice(0, 140);
-        return {
-          id: p.id,
-          category_id: cat,
-          treatment,
-          treatment_meta: sanitizeMeta(treatment, p.treatment_meta),
-          confidence,
-          reason,
-        };
+    // Index inputs by id for validation + reason/merchant cross-check.
+    const inputById = new Map(batch.map((t) => [t.id, t] as const));
+    const STOP = new Set([
+      "the","a","an","of","and","or","for","to","in","on","at","by","is","are",
+      "was","were","be","with","from","as","that","this","it","its","into",
+      "merchant","payment","transaction","card","purchase","charge","store",
+      "global","brand","fast","food","provider","major","utility","p2p",
+      "transfer","consistent","history","grocery","groceries","restaurant",
+      "restaurants","insurance",
+    ]);
+    const tokenize = (s: string): string[] =>
+      String(s ?? "")
+        .toLowerCase()
+        .replace(/[^a-z0-9& ]+/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length >= 3 && !STOP.has(w));
+
+    const seen = new Set<string>();
+    const cleaned: Array<{
+      id: string;
+      category_id: string | null;
+      treatment: Treatment;
+      treatment_meta: Record<string, unknown>;
+      confidence: number;
+      reason: string;
+      unverified: boolean;
+    }> = [];
+
+    for (const p of proposals) {
+      if (!p || typeof p.id !== "string") continue;
+      const inputTxn = inputById.get(p.id);
+      if (!inputTxn) {
+        console.warn("review-transactions: dropping proposal with unknown id", p.id, p.reason);
+        continue;
+      }
+      if (seen.has(p.id)) {
+        console.warn("review-transactions: dropping duplicate proposal for id", p.id, p.reason);
+        continue;
+      }
+      seen.add(p.id);
+
+      const treatment: Treatment = TREATMENTS.includes(p.treatment) ? p.treatment : "normal";
+      const cat = p.category_id && validIds.has(p.category_id) ? p.category_id : null;
+      let confidence = Number(p.confidence);
+      if (!Number.isFinite(confidence)) confidence = 0.3;
+      confidence = Math.max(0, Math.min(1, confidence));
+      if (!cat) confidence = Math.min(confidence, 0.4);
+      let reason = String(p.reason ?? "").slice(0, 140);
+
+      // Reason ↔ merchant sanity check. If the reason mentions a substantive
+      // word that doesn't appear in the merchant name (or account name), the
+      // model likely cross-referenced the wrong row. Downgrade and flag.
+      const merchantTokens = new Set([
+        ...tokenize(inputTxn.name ?? ""),
+        ...tokenize(inputTxn.account_name ?? ""),
+      ]);
+      const reasonTokens = tokenize(reason);
+      const overlap = reasonTokens.some((w) => merchantTokens.has(w));
+      // Only flag when the reason actually has substantive tokens to compare.
+      const unverified = reasonTokens.length > 0 && !overlap && merchantTokens.size > 0;
+      if (unverified) {
+        console.warn(
+          "review-transactions: reason↔merchant mismatch",
+          { id: p.id, merchant: inputTxn.name, reason },
+        );
+        confidence = Math.min(confidence, 0.4);
+      }
+
+      cleaned.push({
+        id: p.id,
+        category_id: cat,
+        treatment,
+        treatment_meta: sanitizeMeta(treatment, p.treatment_meta),
+        confidence,
+        reason,
+        unverified,
       });
+    }
 
     const returnedIds = new Set(cleaned.map((c) => c.id));
     const skipped = batch.filter((t) => !returnedIds.has(t.id)).map((t) => t.id);
