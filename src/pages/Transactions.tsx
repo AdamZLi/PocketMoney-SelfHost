@@ -1286,9 +1286,11 @@ const Transactions = () => {
                                   const catChanged = p.newCategoryId !== p.oldCategoryId;
                                   const trChanged = p.newTreatment !== p.oldTreatment;
                                   return (
-                                    <label key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 cursor-pointer">
+                                    const txn = (txns as any[]).find((x) => x.id === p.txnId);
+                                    return (
+                                    <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
-                                        className="mt-0.5"
+                                        className="mt-1"
                                         checked={checked}
                                         onCheckedChange={(v) => {
                                           setExcludedFromPreview((prev) => {
@@ -1299,9 +1301,18 @@ const Transactions = () => {
                                           });
                                         }}
                                       />
-                                      <div className="flex-1 min-w-0">
+                                      <button
+                                        type="button"
+                                        onClick={() => txn && openDetails(txn)}
+                                        disabled={!txn}
+                                        className="flex-1 min-w-0 text-left rounded -mx-1 px-1 py-0.5 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
+                                        title="Click to edit transaction"
+                                      >
                                         <div className="flex items-center justify-between gap-2">
-                                          <div className="text-sm truncate">{p.name}</div>
+                                          <div className="text-sm truncate flex items-center gap-1.5">
+                                            {p.name}
+                                            <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                          </div>
                                           <div className="text-xs tabular-nums text-muted-foreground">
                                             {fmtCurrency(p.amount)}
                                           </div>
@@ -1323,8 +1334,8 @@ const Transactions = () => {
                                             {p.source === "rule" ? "Rule match" : `AI · ${Math.round(p.confidence * 100)}%`} — {p.reason}
                                           </div>
                                         )}
-                                      </div>
-                                    </label>
+                                      </button>
+                                    </div>
                                   );
                                 })}
                               </div>
