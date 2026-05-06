@@ -770,47 +770,44 @@ const Transactions = () => {
   // Step 2: apply the previewed changes (minus any user-deselected ones).
   async function applyScanPreview() {
     const toApply = previewItems.filter((p) => !p.isNoChange && !excludedFromPreview.has(p.txnId));
-    if (toApply.length === 0) {
-      toast({ title: "Nothing to apply" });
+    // Every transaction the agent looked at (changes + no-change confirms,
+    // minus user-dismissed) gets marked as reviewed when the user confirms.
+    const toMarkReviewed = previewItems.filter((p) => !excludedFromPreview.has(p.txnId));
+    if (toApply.length === 0 && toMarkReviewed.length === 0) {
+      toast({ title: "Nothing to mark" });
       return;
     }
     setScanStage("applying");
     setScanning(true);
-    setScanProgress({ done: 0, total: toApply.length });
+    setScanProgress({ done: 0, total: toMarkReviewed.length });
     try {
       let done = 0;
-      for (const p of toApply) {
+      const reviewedAt = new Date().toISOString();
+      for (const p of toMarkReviewed) {
         const txn = (txns as any[]).find((x) => x.id === p.txnId);
         const curCat = txn ? (txn.category_id ?? null) : p.oldCategoryId;
         const curTr = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
-        const updates: Record<string, any> = {};
+        const updates: Record<string, any> = { reviewed: true, reviewed_at: reviewedAt };
         const edits: Array<{ field_changed: string; old_value: any; new_value: any }> = [];
-        if (p.newCategoryId !== curCat) {
+        if (!p.isNoChange && p.newCategoryId !== curCat) {
           updates.category_id = p.newCategoryId;
           edits.push({ field_changed: "category_id", old_value: curCat, new_value: p.newCategoryId });
         }
-        if (p.newTreatment !== curTr) {
+        if (!p.isNoChange && p.newTreatment !== curTr) {
           updates.treatment = p.newTreatment;
           updates.treatment_meta = p.newTreatmentMeta ?? {};
           updates.excluded = p.newTreatment === "excluded";
           edits.push({ field_changed: "treatment", old_value: curTr, new_value: p.newTreatment });
         }
-        // High-confidence items are auto-marked reviewed.
-        if (p.bucket === "high") {
-          updates.reviewed = true;
-          updates.reviewed_at = new Date().toISOString();
-        }
-        if (Object.keys(updates).length > 0) {
-          const { error: upErr } = await supabase.from("transactions").update(updates as any).eq("id", p.txnId);
-          if (upErr) throw upErr;
-          if (edits.length > 0) {
-            await supabase.from("transaction_edits").insert(
-              edits.map((e) => ({ transaction_id: p.txnId, ...e })),
-            );
-          }
+        const { error: upErr } = await supabase.from("transactions").update(updates as any).eq("id", p.txnId);
+        if (upErr) throw upErr;
+        if (edits.length > 0) {
+          await supabase.from("transaction_edits").insert(
+            edits.map((e) => ({ transaction_id: p.txnId, ...e })),
+          );
         }
         // Learning loop: record acceptance for AI-sourced proposals.
-        if (p.source === "ai") {
+        if (p.source === "ai" && !p.isNoChange) {
           await supabase.from("agent_feedback").insert([
             {
               transaction_id: p.txnId,
@@ -833,7 +830,7 @@ const Transactions = () => {
           ]);
         }
         done += 1;
-        setScanProgress({ done, total: toApply.length });
+        setScanProgress({ done, total: toMarkReviewed.length });
       }
       // Record dismissals (unchecked AI items) for the learning loop.
       const dismissed = previewItems.filter((p) => excludedFromPreview.has(p.txnId) && p.source === "ai");
@@ -1264,8 +1261,8 @@ const Transactions = () => {
                   <h2 className="text-lg font-semibold">Review proposed changes</h2>
                   <p className="text-sm text-muted-foreground">
                     {changeItems.length === 0
-                      ? `No changes proposed. Agent confirmed all ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} as already correct.`
-                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered (${noChangeItems.length} confirmed as no change). High-confidence items will be marked reviewed automatically.`}
+                      ? `No changes proposed. Confirming will mark all ${scanTotalConsidered} reviewed transaction${scanTotalConsidered === 1 ? "" : "s"} as reviewed.`
+                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected. All ${scanTotalConsidered} considered transaction${scanTotalConsidered === 1 ? "" : "s"} (${noChangeItems.length} no-change) will be marked as reviewed when you confirm.`}
                   </p>
                 </div>
                 {previewItems.length > 0 && (
@@ -1424,13 +1421,20 @@ const Transactions = () => {
                 )}
                 <div className="border-t px-6 py-4 bg-background flex items-center gap-2">
                   <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
-                  <Button
-                    onClick={applyScanPreview}
-                    disabled={selectedCount === 0}
-                    className="gap-2 ml-auto"
-                  >
-                    Apply {selectedCount} change{selectedCount === 1 ? "" : "s"}
-                  </Button>
+                  {(() => {
+                    const reviewCount = previewItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
+                    return (
+                      <Button
+                        onClick={applyScanPreview}
+                        disabled={reviewCount === 0}
+                        className="gap-2 ml-auto"
+                      >
+                        <Check className="h-4 w-4" />
+                        Mark {reviewCount} as reviewed
+                        {selectedCount > 0 && ` (apply ${selectedCount} change${selectedCount === 1 ? "" : "s"})`}
+                      </Button>
+                    );
+                  })()}
                 </div>
               </>
             );
@@ -1439,8 +1443,8 @@ const Transactions = () => {
           {scanStage === "applying" && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2 className="text-lg font-semibold">Applying changes…</h2>
-                <p className="text-sm text-muted-foreground">Updating your transactions.</p>
+                <h2 className="text-lg font-semibold">Marking as reviewed…</h2>
+                <p className="text-sm text-muted-foreground">Applying changes and updating review state.</p>
               </div>
               <div className="px-6 py-6 space-y-3">
                 <Progress
