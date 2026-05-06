@@ -2042,12 +2042,55 @@ const Transactions = () => {
                 const oldCatName = curCat
                   ? ((categories as any[]).find((c) => c.id === curCat)?.name ?? "—")
                   : "Uncategorized";
-                const applyProposal = async () => {
-                  if (catDiffers) await handleCategoryChange(t, proposal.newCategoryId);
-                  if (trDiffers) await updateTreatment(t.id, proposal.newTreatment, proposal.newTreatmentMeta ?? {});
+                const merchantKey = (proposal.name ?? t.name ?? "").trim().toLowerCase();
+                const recordFeedback = async (
+                  field: "category" | "treatment",
+                  action: "accepted" | "dismissed" | "modified",
+                  userValue: any,
+                ) => {
+                  if (proposal.source !== "ai") return;
+                  await supabase.from("agent_feedback").insert({
+                    transaction_id: t.id,
+                    merchant_name: merchantKey,
+                    field,
+                    ai_value:
+                      field === "category"
+                        ? { category_id: proposal.newCategoryId }
+                        : { treatment: proposal.newTreatment, meta: proposal.newTreatmentMeta },
+                    ai_confidence: proposal.confidence,
+                    user_action: action,
+                    user_value: userValue,
+                  });
+                };
+                const applyCategoryOnly = async () => {
+                  await handleCategoryChange(t, proposal.newCategoryId);
+                  await recordFeedback("category", "accepted", { category_id: proposal.newCategoryId });
+                };
+                const applyTreatmentOnly = async () => {
+                  await updateTreatment(t.id, proposal.newTreatment, proposal.newTreatmentMeta ?? {});
+                  await recordFeedback("treatment", "accepted", {
+                    treatment: proposal.newTreatment, meta: proposal.newTreatmentMeta,
+                  });
+                };
+                const applyAll = async () => {
+                  if (catDiffers) await applyCategoryOnly();
+                  if (trDiffers) await applyTreatmentOnly();
+                };
+                const dismissProposal = async () => {
+                  if (catDiffers) {
+                    await recordFeedback("category", "dismissed", { category_id: curCat });
+                  }
+                  if (trDiffers) {
+                    await recordFeedback("treatment", "dismissed", { treatment: curTr });
+                  }
+                  setPreviewItems((prev) => prev.filter((p) => p.txnId !== t.id));
+                  setExcludedFromPreview((prev) => {
+                    const next = new Set(prev); next.add(t.id); return next;
+                  });
+                  toast({ title: "Proposal dismissed", description: "The agent will remember this for next time." });
                 };
                 return (
-                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2.5">
                     <div className="flex items-center gap-2">
                       <span className={`h-2 w-2 rounded-full ${dotColor}`} />
                       <div className="text-sm font-medium">AI proposal</div>
@@ -2061,15 +2104,25 @@ const Transactions = () => {
                       )}
                     </div>
                     {catDiffers && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="opacity-70">Category:</span>{" "}
-                        {oldCatName} → <span className="text-foreground">{proposal.newCategoryName}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 text-xs text-muted-foreground min-w-0 truncate">
+                          <span className="opacity-70">Category:</span>{" "}
+                          {oldCatName} → <span className="text-foreground">{proposal.newCategoryName}</span>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={applyCategoryOnly}>
+                          Apply
+                        </Button>
                       </div>
                     )}
                     {trDiffers && (
-                      <div className="text-xs text-muted-foreground">
-                        <span className="opacity-70">Treatment:</span>{" "}
-                        {curTr} → <span className="text-foreground">{proposal.newTreatment}</span>
+                      <div className="flex items-center gap-2">
+                        <div className="flex-1 text-xs text-muted-foreground min-w-0 truncate">
+                          <span className="opacity-70">Treatment:</span>{" "}
+                          {curTr} → <span className="text-foreground">{proposal.newTreatment}</span>
+                        </div>
+                        <Button type="button" size="sm" variant="outline" className="h-6 px-2 text-[11px]" onClick={applyTreatmentOnly}>
+                          Apply
+                        </Button>
                       </div>
                     )}
                     {proposal.reason && (
@@ -2078,9 +2131,19 @@ const Transactions = () => {
                       </div>
                     )}
                     {!allApplied && (
-                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={applyProposal}>
-                        Apply proposal
-                      </Button>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={dismissProposal}>
+                          Dismiss
+                        </Button>
+                        <Button type="button" size="sm" className="h-7 text-xs ml-auto" onClick={applyAll}>
+                          Apply all
+                        </Button>
+                      </div>
+                    )}
+                    {proposal.source === "ai" && (
+                      <p className="text-[10px] text-muted-foreground/70">
+                        Your choice (apply, edit, or dismiss) is saved to improve future suggestions.
+                      </p>
                     )}
                   </div>
                 );
