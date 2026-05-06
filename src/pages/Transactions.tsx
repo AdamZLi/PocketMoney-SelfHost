@@ -85,6 +85,7 @@ const Transactions = () => {
   const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
   const [bucketsCollapsed, setBucketsCollapsed] = useState<Record<"high" | "medium" | "low", boolean>>({ high: true, medium: false, low: false });
+  const [noChangeCollapsed, setNoChangeCollapsed] = useState(true);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
 
