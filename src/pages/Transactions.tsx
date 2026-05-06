@@ -2027,6 +2027,65 @@ const Transactions = () => {
                 />
               </div>
 
+              {(() => {
+                const proposal = previewItems.find((p) => p.txnId === t.id);
+                if (!proposal) return null;
+                const curCat = t.category_id ?? null;
+                const curTr = (t.treatment ?? "normal") as Treatment;
+                const catDiffers = proposal.newCategoryId !== curCat;
+                const trDiffers = proposal.newTreatment !== curTr;
+                const allApplied = !catDiffers && !trDiffers;
+                const dotColor =
+                  proposal.bucket === "high" ? "bg-confidence-high"
+                  : proposal.bucket === "medium" ? "bg-confidence-medium"
+                  : "bg-confidence-low";
+                const oldCatName = curCat
+                  ? ((categories as any[]).find((c) => c.id === curCat)?.name ?? "—")
+                  : "Uncategorized";
+                const applyProposal = async () => {
+                  if (catDiffers) await handleCategoryChange(t, proposal.newCategoryId);
+                  if (trDiffers) await updateTreatment(t.id, proposal.newTreatment, proposal.newTreatmentMeta ?? {});
+                };
+                return (
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+                      <div className="text-sm font-medium">AI proposal</div>
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                        {proposal.source === "rule" ? "Rule" : `${Math.round(proposal.confidence * 100)}%`}
+                      </Badge>
+                      {allApplied && (
+                        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide ml-auto">
+                          Applied
+                        </Badge>
+                      )}
+                    </div>
+                    {catDiffers && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="opacity-70">Category:</span>{" "}
+                        {oldCatName} → <span className="text-foreground">{proposal.newCategoryName}</span>
+                      </div>
+                    )}
+                    {trDiffers && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="opacity-70">Treatment:</span>{" "}
+                        {curTr} → <span className="text-foreground">{proposal.newTreatment}</span>
+                      </div>
+                    )}
+                    {proposal.reason && (
+                      <div className="text-xs text-muted-foreground italic">
+                        "{proposal.reason}"
+                      </div>
+                    )}
+                    {!allApplied && (
+                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={applyProposal}>
+                        Apply proposal
+                      </Button>
+                    )}
+                  </div>
+                );
+              })()}
+
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Note</Label>
                 <Textarea
