@@ -156,10 +156,21 @@ const Transactions = () => {
     setDetailsId(t.id);
     setDetailsRecord(t);
     setDetailsOriginalName(t.name);
+    // If there's an AI proposal for this txn and the existing note doesn't already
+    // include it, prefill the note with the agent's reasoning so the user can keep,
+    // edit or replace it.
+    const proposal = previewItems.find((p) => p.txnId === t.id);
+    let note = t.note ?? "";
+    if (proposal?.reason && proposal.source === "ai") {
+      const tag = `[AI · ${Math.round(proposal.confidence * 100)}%] ${proposal.reason}`;
+      if (!note.includes(proposal.reason)) {
+        note = note ? `${tag}\n\n${note}` : tag;
+      }
+    }
     setDetailsDraft({
       name: t.name ?? "",
       date: t.date ?? "",
-      note: t.note ?? "",
+      note,
       amount: t.amount != null ? String(t.amount) : "",
     });
   }
