@@ -75,6 +75,7 @@ const Transactions = () => {
     bucket: "high" | "medium" | "low";
     reason: string;
     source: "rule" | "ai";
+    isNoChange: boolean;
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
   const [scanStage, setScanStage] = useState<ScanStage>("configure");
