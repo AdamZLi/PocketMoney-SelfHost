@@ -77,6 +77,7 @@ const Transactions = () => {
     source: "rule" | "ai";
     isNoChange: boolean;
     dismissed?: { category?: boolean; treatment?: boolean };
+    unverified?: boolean;
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
   const [scanStage, setScanStage] = useState<ScanStage>("configure");
