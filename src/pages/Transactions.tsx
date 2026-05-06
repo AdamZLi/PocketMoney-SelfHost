@@ -1248,7 +1248,13 @@ const Transactions = () => {
             const oldCatName = (id: string | null) =>
               id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
             const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
-            const selectedCount = changeItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
+            const selectedCount = changeItems.filter((p) => {
+              if (excludedFromPreview.has(p.txnId)) return false;
+              const txn = (txns as any[]).find((x) => x.id === p.txnId);
+              const curCat = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+              const curTr = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
+              return p.newCategoryId !== curCat || p.newTreatment !== curTr;
+            }).length;
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
