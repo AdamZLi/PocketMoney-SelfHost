@@ -2153,6 +2153,7 @@ const Transactions = () => {
                         ⚠ Reason may not match this merchant — please verify before accepting.
                       </div>
                     )}
+                    {catDiffers && (
                       <div className="flex items-center gap-2">
                         <div className="flex-1 text-xs text-muted-foreground min-w-0 truncate">
                           <span className="opacity-70">Category:</span>{" "}
