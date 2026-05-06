@@ -77,6 +77,7 @@ const Transactions = () => {
     source: "rule" | "ai";
     isNoChange: boolean;
     dismissed?: { category?: boolean; treatment?: boolean };
+    unverified?: boolean;
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
   const [scanStage, setScanStage] = useState<ScanStage>("configure");
@@ -724,19 +725,28 @@ const Transactions = () => {
           treatment_meta: TreatmentMeta;
           confidence: number;
           reason: string;
+          unverified?: boolean;
         }> = aiData?.proposals ?? [];
 
+        const seenIds = new Set<string>();
         for (const p of proposals) {
           const t = chunk.find((x: any) => x.id === p.id);
           if (!t) continue;
+          if (seenIds.has(p.id)) continue; // server already dedupes; belt + braces
+          seenIds.add(p.id);
           const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
           const categoryChanged = p.category_id !== t.category_id;
           const treatmentChanged = p.treatment !== oldTreatment;
           const isNoChange = !categoryChanged && !treatmentChanged;
           const rawC = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          // Unverified proposals stay in Low regardless of model self-rating.
           // No-change verdicts always land in High — the agent confirmed
           // the existing values match its proposal.
-          const c = isNoChange ? Math.max(rawC, 0.9) : rawC;
+          const c = p.unverified
+            ? Math.min(rawC, 0.4)
+            : isNoChange
+              ? Math.max(rawC, 0.9)
+              : rawC;
           const bucket: PreviewItem["bucket"] = c >= 0.9 ? "high" : c >= 0.5 ? "medium" : "low";
           items.push({
             txnId: t.id,
@@ -753,12 +763,18 @@ const Transactions = () => {
             reason: p.reason ?? "",
             source: "ai",
             isNoChange,
+            unverified: !!p.unverified,
           });
         }
         setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
       }
 
-      setPreviewItems(items);
+      // Final guard: in the unlikely case duplicates slipped through across
+      // chunks or rule + AI both produced an entry for the same txn, keep
+      // the first one. Rule entries come first so they win.
+      const dedup = new Map<string, PreviewItem>();
+      for (const it of items) if (!dedup.has(it.txnId)) dedup.set(it.txnId, it);
+      setPreviewItems(Array.from(dedup.values()));
       setScanStage("preview");
     } catch (e: any) {
       toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
@@ -1340,6 +1356,9 @@ const Transactions = () => {
                                             )}
                                             {fullyDismissed && (
                                               <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Dismissed</Badge>
+                                            )}
+                                            {p.unverified && (
+                                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide border-confidence-low/60 text-confidence-low">⚠ Verify</Badge>
                                             )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
@@ -2132,6 +2151,11 @@ const Transactions = () => {
                         </Badge>
                       )}
                     </div>
+                    {proposal.unverified && (
+                      <div className="rounded border border-confidence-low/40 bg-confidence-low/10 px-2 py-1 text-[11px] text-foreground/80">
+                        ⚠ Reason may not match this merchant — please verify before accepting.
+                      </div>
+                    )}
                     {catDiffers && (
                       <div className="flex items-center gap-2">
                         <div className="flex-1 text-xs text-muted-foreground min-w-0 truncate">
