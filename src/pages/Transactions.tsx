@@ -1357,6 +1357,9 @@ const Transactions = () => {
                                             {fullyDismissed && (
                                               <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Dismissed</Badge>
                                             )}
+                                            {p.unverified && (
+                                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide border-confidence-low/60 text-confidence-low">⚠ Verify</Badge>
+                                            )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
                                           <div className="text-xs tabular-nums text-muted-foreground">
