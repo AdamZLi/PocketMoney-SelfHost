@@ -725,19 +725,28 @@ const Transactions = () => {
           treatment_meta: TreatmentMeta;
           confidence: number;
           reason: string;
+          unverified?: boolean;
         }> = aiData?.proposals ?? [];
 
+        const seenIds = new Set<string>();
         for (const p of proposals) {
           const t = chunk.find((x: any) => x.id === p.id);
           if (!t) continue;
+          if (seenIds.has(p.id)) continue; // server already dedupes; belt + braces
+          seenIds.add(p.id);
           const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
           const categoryChanged = p.category_id !== t.category_id;
           const treatmentChanged = p.treatment !== oldTreatment;
           const isNoChange = !categoryChanged && !treatmentChanged;
           const rawC = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          // Unverified proposals stay in Low regardless of model self-rating.
           // No-change verdicts always land in High — the agent confirmed
           // the existing values match its proposal.
-          const c = isNoChange ? Math.max(rawC, 0.9) : rawC;
+          const c = p.unverified
+            ? Math.min(rawC, 0.4)
+            : isNoChange
+              ? Math.max(rawC, 0.9)
+              : rawC;
           const bucket: PreviewItem["bucket"] = c >= 0.9 ? "high" : c >= 0.5 ? "medium" : "low";
           items.push({
             txnId: t.id,
@@ -754,12 +763,18 @@ const Transactions = () => {
             reason: p.reason ?? "",
             source: "ai",
             isNoChange,
+            unverified: !!p.unverified,
           });
         }
         setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
       }
 
-      setPreviewItems(items);
+      // Final guard: in the unlikely case duplicates slipped through across
+      // chunks or rule + AI both produced an entry for the same txn, keep
+      // the first one. Rule entries come first so they win.
+      const dedup = new Map<string, PreviewItem>();
+      for (const it of items) if (!dedup.has(it.txnId)) dedup.set(it.txnId, it);
+      setPreviewItems(Array.from(dedup.values()));
       setScanStage("preview");
     } catch (e: any) {
       toast({ title: "Scan failed", description: e.message ?? String(e), variant: "destructive" });
