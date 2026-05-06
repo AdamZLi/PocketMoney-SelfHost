@@ -719,8 +719,11 @@ const Transactions = () => {
           const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
           const categoryChanged = p.category_id !== t.category_id;
           const treatmentChanged = p.treatment !== oldTreatment;
-          if (!categoryChanged && !treatmentChanged) continue;
-          const c = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          const isNoChange = !categoryChanged && !treatmentChanged;
+          const rawC = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          // No-change verdicts always land in High — the agent confirmed
+          // the existing values match its proposal.
+          const c = isNoChange ? Math.max(rawC, 0.9) : rawC;
           const bucket: PreviewItem["bucket"] = c >= 0.9 ? "high" : c >= 0.5 ? "medium" : "low";
           items.push({
             txnId: t.id,
@@ -736,6 +739,7 @@ const Transactions = () => {
             bucket,
             reason: p.reason ?? "",
             source: "ai",
+            isNoChange,
           });
         }
         setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
