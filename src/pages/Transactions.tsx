@@ -930,6 +930,7 @@ const Transactions = () => {
     const months = [...stats.entries()].sort(([a], [b]) => (a < b ? 1 : -1));
     const firstUnreviewed = months.find(([, s]) => s.unreviewed > 0)?.[0];
     setScanMonth(firstUnreviewed ?? months[0]?.[0] ?? "");
+    setScanShowAllMonths(false);
   }
 
   function toggleOne(id: string, checked: boolean) {
