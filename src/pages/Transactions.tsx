@@ -2165,8 +2165,8 @@ const Transactions = () => {
                     )}
                     {!allApplied && (
                       <div className="flex items-center gap-2 pt-1">
-                        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={dismissProposal}>
-                          Dismiss
+                        <Button type="button" size="sm" variant="ghost" className="h-7 text-xs" onClick={dismissAll}>
+                          Dismiss all
                         </Button>
                         <Button type="button" size="sm" className="h-7 text-xs ml-auto" onClick={applyAll}>
                           Apply all
