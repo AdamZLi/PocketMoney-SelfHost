@@ -757,7 +757,7 @@ const Transactions = () => {
 
   // Step 2: apply the previewed changes (minus any user-deselected ones).
   async function applyScanPreview() {
-    const toApply = previewItems.filter((p) => !excludedFromPreview.has(p.txnId));
+    const toApply = previewItems.filter((p) => !p.isNoChange && !excludedFromPreview.has(p.txnId));
     if (toApply.length === 0) {
       toast({ title: "Nothing to apply" });
       return;
