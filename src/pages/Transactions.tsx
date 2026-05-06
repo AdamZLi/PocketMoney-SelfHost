@@ -780,17 +780,20 @@ const Transactions = () => {
     try {
       let done = 0;
       for (const p of toApply) {
+        const txn = (txns as any[]).find((x) => x.id === p.txnId);
+        const curCat = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+        const curTr = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
         const updates: Record<string, any> = {};
         const edits: Array<{ field_changed: string; old_value: any; new_value: any }> = [];
-        if (p.newCategoryId !== p.oldCategoryId) {
+        if (p.newCategoryId !== curCat) {
           updates.category_id = p.newCategoryId;
-          edits.push({ field_changed: "category_id", old_value: p.oldCategoryId, new_value: p.newCategoryId });
+          edits.push({ field_changed: "category_id", old_value: curCat, new_value: p.newCategoryId });
         }
-        if (p.newTreatment !== p.oldTreatment) {
+        if (p.newTreatment !== curTr) {
           updates.treatment = p.newTreatment;
           updates.treatment_meta = p.newTreatmentMeta ?? {};
           updates.excluded = p.newTreatment === "excluded";
-          edits.push({ field_changed: "treatment", old_value: p.oldTreatment, new_value: p.newTreatment });
+          edits.push({ field_changed: "treatment", old_value: curTr, new_value: p.newTreatment });
         }
         // High-confidence items are auto-marked reviewed.
         if (p.bucket === "high") {
