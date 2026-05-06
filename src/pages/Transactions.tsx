@@ -156,10 +156,21 @@ const Transactions = () => {
     setDetailsId(t.id);
     setDetailsRecord(t);
     setDetailsOriginalName(t.name);
+    // If there's an AI proposal for this txn and the existing note doesn't already
+    // include it, prefill the note with the agent's reasoning so the user can keep,
+    // edit or replace it.
+    const proposal = previewItems.find((p) => p.txnId === t.id);
+    let note = t.note ?? "";
+    if (proposal?.reason && proposal.source === "ai") {
+      const tag = `[AI · ${Math.round(proposal.confidence * 100)}%] ${proposal.reason}`;
+      if (!note.includes(proposal.reason)) {
+        note = note ? `${tag}\n\n${note}` : tag;
+      }
+    }
     setDetailsDraft({
       name: t.name ?? "",
       date: t.date ?? "",
-      note: t.note ?? "",
+      note,
       amount: t.amount != null ? String(t.amount) : "",
     });
   }
@@ -769,17 +780,20 @@ const Transactions = () => {
     try {
       let done = 0;
       for (const p of toApply) {
+        const txn = (txns as any[]).find((x) => x.id === p.txnId);
+        const curCat = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+        const curTr = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
         const updates: Record<string, any> = {};
         const edits: Array<{ field_changed: string; old_value: any; new_value: any }> = [];
-        if (p.newCategoryId !== p.oldCategoryId) {
+        if (p.newCategoryId !== curCat) {
           updates.category_id = p.newCategoryId;
-          edits.push({ field_changed: "category_id", old_value: p.oldCategoryId, new_value: p.newCategoryId });
+          edits.push({ field_changed: "category_id", old_value: curCat, new_value: p.newCategoryId });
         }
-        if (p.newTreatment !== p.oldTreatment) {
+        if (p.newTreatment !== curTr) {
           updates.treatment = p.newTreatment;
           updates.treatment_meta = p.newTreatmentMeta ?? {};
           updates.excluded = p.newTreatment === "excluded";
-          edits.push({ field_changed: "treatment", old_value: p.oldTreatment, new_value: p.newTreatment });
+          edits.push({ field_changed: "treatment", old_value: curTr, new_value: p.newTreatment });
         }
         // High-confidence items are auto-marked reviewed.
         if (p.bucket === "high") {
@@ -1237,7 +1251,13 @@ const Transactions = () => {
             const oldCatName = (id: string | null) =>
               id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
             const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
-            const selectedCount = changeItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
+            const selectedCount = changeItems.filter((p) => {
+              if (excludedFromPreview.has(p.txnId)) return false;
+              const txn = (txns as any[]).find((x) => x.id === p.txnId);
+              const curCat = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+              const curTr = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
+              return p.newCategoryId !== curCat || p.newTreatment !== curTr;
+            }).length;
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
@@ -1282,15 +1302,21 @@ const Transactions = () => {
                               <div className="divide-y border-t">
                                 {b.items.map((p) => {
                                   const checked = !excludedFromPreview.has(p.txnId);
-                                  const oldCat = oldCatName(p.oldCategoryId);
-                                  const catChanged = p.newCategoryId !== p.oldCategoryId;
-                                  const trChanged = p.newTreatment !== p.oldTreatment;
                                   const txn = (txns as any[]).find((x) => x.id === p.txnId);
+                                  // Use LIVE txn state so user edits made via the side panel
+                                  // are reflected here immediately.
+                                  const currentCatId = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+                                  const currentTreatment = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
+                                  const oldCat = oldCatName(currentCatId);
+                                  const catChanged = p.newCategoryId !== currentCatId;
+                                  const trChanged = p.newTreatment !== currentTreatment;
+                                  const alreadyMatches = !catChanged && !trChanged;
                                   return (
                                     <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
                                         className="mt-1"
-                                        checked={checked}
+                                        checked={checked && !alreadyMatches}
+                                        disabled={alreadyMatches}
                                         onCheckedChange={(v) => {
                                           setExcludedFromPreview((prev) => {
                                             const next = new Set(prev);
@@ -1310,6 +1336,9 @@ const Transactions = () => {
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-sm truncate flex items-center gap-1.5">
                                             {p.name}
+                                            {alreadyMatches && (
+                                              <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Applied</Badge>
+                                            )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
                                           <div className="text-xs tabular-nums text-muted-foreground">
@@ -1325,7 +1354,7 @@ const Transactions = () => {
                                         {trChanged && (
                                           <div className="text-xs text-muted-foreground truncate">
                                             <span className="opacity-70">Treatment:</span>{" "}
-                                            {treatmentLabelShort(p.oldTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
+                                            {treatmentLabelShort(currentTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
                                           </div>
                                         )}
                                         {p.reason && (
@@ -1997,6 +2026,65 @@ const Transactions = () => {
                   onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
                 />
               </div>
+
+              {(() => {
+                const proposal = previewItems.find((p) => p.txnId === t.id);
+                if (!proposal) return null;
+                const curCat = t.category_id ?? null;
+                const curTr = (t.treatment ?? "normal") as Treatment;
+                const catDiffers = proposal.newCategoryId !== curCat;
+                const trDiffers = proposal.newTreatment !== curTr;
+                const allApplied = !catDiffers && !trDiffers;
+                const dotColor =
+                  proposal.bucket === "high" ? "bg-confidence-high"
+                  : proposal.bucket === "medium" ? "bg-confidence-medium"
+                  : "bg-confidence-low";
+                const oldCatName = curCat
+                  ? ((categories as any[]).find((c) => c.id === curCat)?.name ?? "—")
+                  : "Uncategorized";
+                const applyProposal = async () => {
+                  if (catDiffers) await handleCategoryChange(t, proposal.newCategoryId);
+                  if (trDiffers) await updateTreatment(t.id, proposal.newTreatment, proposal.newTreatmentMeta ?? {});
+                };
+                return (
+                  <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className={`h-2 w-2 rounded-full ${dotColor}`} />
+                      <div className="text-sm font-medium">AI proposal</div>
+                      <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
+                        {proposal.source === "rule" ? "Rule" : `${Math.round(proposal.confidence * 100)}%`}
+                      </Badge>
+                      {allApplied && (
+                        <Badge variant="secondary" className="text-[10px] uppercase tracking-wide ml-auto">
+                          Applied
+                        </Badge>
+                      )}
+                    </div>
+                    {catDiffers && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="opacity-70">Category:</span>{" "}
+                        {oldCatName} → <span className="text-foreground">{proposal.newCategoryName}</span>
+                      </div>
+                    )}
+                    {trDiffers && (
+                      <div className="text-xs text-muted-foreground">
+                        <span className="opacity-70">Treatment:</span>{" "}
+                        {curTr} → <span className="text-foreground">{proposal.newTreatment}</span>
+                      </div>
+                    )}
+                    {proposal.reason && (
+                      <div className="text-xs text-muted-foreground italic">
+                        "{proposal.reason}"
+                      </div>
+                    )}
+                    {!allApplied && (
+                      <Button type="button" size="sm" variant="outline" className="h-7 text-xs" onClick={applyProposal}>
+                        Apply proposal
+                      </Button>
+                    )}
+                  </div>
+                );
+              })()}
 
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Note</Label>
