@@ -2091,21 +2091,18 @@ const Transactions = () => {
                   );
                   setPreviewItems((prev) => prev.map((p) => {
                     if (p.txnId !== t.id) return p;
-                    const next = { ...p };
+                    const next = { ...p, dismissed: { ...(p.dismissed ?? {}) } };
                     if (field === "category") {
                       next.newCategoryId = curCat;
                       next.newCategoryName = oldCatName;
+                      next.dismissed!.category = true;
                     } else {
                       next.newTreatment = curTr;
                       next.newTreatmentMeta = (t.treatment_meta ?? {}) as TreatmentMeta;
+                      next.dismissed!.treatment = true;
                     }
-                    const stillCat = next.newCategoryId !== curCat;
-                    const stillTr = next.newTreatment !== curTr;
-                    if (!stillCat && !stillTr) {
-                      next.isNoChange = true;
-                      next.bucket = "high";
-                      next.reason = "Dismissed — pending manual review";
-                    }
+                    // Keep the item in its existing bucket (don't move to "No change needed")
+                    // so the user still sees it on the review list and can mark it reviewed.
                     return next;
                   }));
                   setExcludedFromPreview((prev) => {
