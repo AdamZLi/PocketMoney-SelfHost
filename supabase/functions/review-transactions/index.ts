@@ -75,11 +75,14 @@ You MUST NOT output "split".
 HARD RULES:
 - Output ONLY via the submit_review tool. No prose.
 - Exactly one proposal per input transaction, keyed by the original id.
+  Never repeat an id. Never invent an id that wasn't given to you.
 - category_id MUST be null or an id from the provided categories list.
 - treatment MUST be one of the five enum values above.
 - treatment_meta MUST only contain keys allowed for the chosen treatment.
 - If unsure on category, return null and confidence ≤ 0.40.
-- reason ≤ 140 characters, plain English, no emoji.`;
+- reason ≤ 140 characters, plain English, no emoji. The reason MUST refer
+  to the SAME merchant as the input row (mention a token from its name or
+  obviously describe that merchant). Never explain row A using brand B.`;
 
 function normalizeMerchant(s: string) {
   return s.trim().toLowerCase().replace(/\s+/g, " ");
