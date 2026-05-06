@@ -1162,77 +1162,113 @@ const Transactions = () => {
           </button>
 
           {scanStage === "configure" && (() => {
-            // Build month options from loaded transactions (most recent first)
-            const monthSet = new Set<string>();
+            // Build month stats: total + unreviewed counts per YYYY-MM
+            const stats = new Map<string, { total: number; unreviewed: number }>();
             for (const t of (txns as any[])) {
-              if (t?.date) monthSet.add(String(t.date).slice(0, 7));
+              if (!t?.date) continue;
+              const ym = String(t.date).slice(0, 7);
+              const s = stats.get(ym) ?? { total: 0, unreviewed: 0 };
+              s.total++;
+              if (!t.reviewed) s.unreviewed++;
+              stats.set(ym, s);
             }
-            const monthOpts = [...monthSet].sort((a, b) => (a < b ? 1 : -1));
+            const monthOpts = [...stats.entries()]
+              .map(([ym, s]) => ({ ym, ...s }))
+              .sort((a, b) => (a.ym < b.ym ? 1 : -1));
             const monthLabel = (ym: string) => {
               const [y, m] = ym.split("-").map(Number);
               return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
             };
+            const advancedCount =
+              (scanReviewed !== "unreviewed" ? 1 : 0) +
+              (scanAccountId !== "all" ? 1 : 0) +
+              (scanCategoryId !== "all" ? 1 : 0);
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
                   <h2 className="text-lg font-semibold">AI scan &amp; review</h2>
                   <p className="text-sm text-muted-foreground">
-                    Pick which transactions to analyze. Existing rules apply first; the AI agent reviews the rest. You'll preview changes before anything is saved.
+                    Pick a month. We'll review every transaction you haven't checked yet. Existing rules apply first; the AI agent reviews the rest.
                   </p>
                 </div>
                 <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
                   <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Reviewed</Label>
-                    <Select value={scanReviewed} onValueChange={(v) => setScanReviewed(v as any)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="unreviewed">Not reviewed yet</SelectItem>
-                        <SelectItem value="reviewed">Already reviewed</SelectItem>
-                        <SelectItem value="all">All transactions</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Account</Label>
-                    <Select value={scanAccountId} onValueChange={setScanAccountId}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All accounts</SelectItem>
-                        {(accounts as any[]).map((a) => (
-                          <SelectItem key={a.id} value={a.id}>
-                            {a.name}{a.mask ? ` ····${a.mask}` : ""}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs text-muted-foreground">Category</Label>
-                    <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">All categories</SelectItem>
-                        <SelectItem value="uncategorized">Uncategorized only</SelectItem>
-                        {(categories as any[]).map((c) => (
-                          <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1.5">
                     <Label className="text-xs text-muted-foreground">Month</Label>
                     <Select value={scanMonth || "all"} onValueChange={(v) => setScanMonth(v === "all" ? "" : v)}>
-                      <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="h-10"><SelectValue placeholder="Select a month" /></SelectTrigger>
                       <SelectContent>
+                        {monthOpts.map(({ ym, total, unreviewed }) => {
+                          const pct = total > 0 ? Math.round((unreviewed / total) * 100) : 0;
+                          const suffix = unreviewed === 0
+                            ? "All reviewed"
+                            : `${unreviewed} left (${pct}%)`;
+                          return (
+                            <SelectItem key={ym} value={ym}>
+                              <span className="flex items-center gap-2">
+                                <span>{monthLabel(ym)}</span>
+                                <span className={unreviewed === 0 ? "text-muted-foreground text-xs" : "text-muted-foreground text-xs"}>
+                                  · {suffix}
+                                </span>
+                              </span>
+                            </SelectItem>
+                          );
+                        })}
                         <SelectItem value="all">All months</SelectItem>
-                        {monthOpts.map((ym) => (
-                          <SelectItem key={ym} value={ym}>{monthLabel(ym)}</SelectItem>
-                        ))}
                       </SelectContent>
                     </Select>
                   </div>
+
+                  <Collapsible>
+                    <CollapsibleTrigger className="group flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+                      <ChevronDown className="h-4 w-4 transition-transform group-data-[state=closed]:-rotate-90" />
+                      <span>Advanced filters</span>
+                      {advancedCount > 0 && (
+                        <Badge variant="secondary" className="h-5 px-1.5 text-xs">{advancedCount}</Badge>
+                      )}
+                    </CollapsibleTrigger>
+                    <CollapsibleContent className="pt-3 space-y-4">
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Reviewed</Label>
+                        <Select value={scanReviewed} onValueChange={(v) => setScanReviewed(v as any)}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="unreviewed">Not reviewed yet</SelectItem>
+                            <SelectItem value="reviewed">Already reviewed</SelectItem>
+                            <SelectItem value="all">All transactions</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Account</Label>
+                        <Select value={scanAccountId} onValueChange={setScanAccountId}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All accounts</SelectItem>
+                            {(accounts as any[]).map((a) => (
+                              <SelectItem key={a.id} value={a.id}>
+                                {a.name}{a.mask ? ` ····${a.mask}` : ""}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs text-muted-foreground">Category</Label>
+                        <Select value={scanCategoryId} onValueChange={setScanCategoryId}>
+                          <SelectTrigger className="h-9"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="all">All categories</SelectItem>
+                            <SelectItem value="uncategorized">Uncategorized only</SelectItem>
+                            {(categories as any[]).map((c) => (
+                              <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </CollapsibleContent>
+                  </Collapsible>
                 </div>
-                <div className="border-t px-6 py-4 bg-background">
+                <div className="border-t px-6 py-4 bg-background flex items-center justify-end gap-2">
                   <Button variant="ghost" onClick={() => setScanOpen(false)}>Cancel</Button>
                   <Button onClick={buildScanPreview} className="gap-2">
                     <Sparkles className="h-3.5 w-3.5" />
