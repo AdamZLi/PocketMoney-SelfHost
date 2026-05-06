@@ -1421,13 +1421,20 @@ const Transactions = () => {
                 )}
                 <div className="border-t px-6 py-4 bg-background flex items-center gap-2">
                   <Button variant="ghost" onClick={() => setScanStage("configure")}>Back</Button>
-                  <Button
-                    onClick={applyScanPreview}
-                    disabled={selectedCount === 0}
-                    className="gap-2 ml-auto"
-                  >
-                    Apply {selectedCount} change{selectedCount === 1 ? "" : "s"}
-                  </Button>
+                  {(() => {
+                    const reviewCount = previewItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
+                    return (
+                      <Button
+                        onClick={applyScanPreview}
+                        disabled={reviewCount === 0}
+                        className="gap-2 ml-auto"
+                      >
+                        <Check className="h-4 w-4" />
+                        Mark {reviewCount} as reviewed
+                        {selectedCount > 0 && ` (apply ${selectedCount} change${selectedCount === 1 ? "" : "s"})`}
+                      </Button>
+                    );
+                  })()}
                 </div>
               </>
             );
