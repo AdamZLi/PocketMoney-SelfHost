@@ -665,24 +665,25 @@ const Transactions = () => {
         const cat = applyRules(t.name, rules);
         const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
         if (cat) {
-          if (cat !== t.category_id) {
-            items.push({
-              txnId: t.id,
-              name: t.name,
-              amount: Number(t.amount) || 0,
-              oldCategoryId: t.category_id,
-              newCategoryId: cat,
-              newCategoryName: catName(cat),
-              oldTreatment,
-              newTreatment: oldTreatment,
-              newTreatmentMeta: (t.treatment_meta ?? {}) as TreatmentMeta,
-              confidence: 1,
-              bucket: "high",
-              reason: "Matched a saved category rule.",
-              source: "rule",
-              isNoChange: false,
-            });
-          }
+          const ruleChanges = cat !== t.category_id;
+          items.push({
+            txnId: t.id,
+            name: t.name,
+            amount: Number(t.amount) || 0,
+            oldCategoryId: t.category_id,
+            newCategoryId: cat,
+            newCategoryName: catName(cat),
+            oldTreatment,
+            newTreatment: oldTreatment,
+            newTreatmentMeta: (t.treatment_meta ?? {}) as TreatmentMeta,
+            confidence: 1,
+            bucket: "high",
+            reason: ruleChanges
+              ? "Matched a saved category rule."
+              : "Already matches a saved category rule — no change needed.",
+            source: "rule",
+            isNoChange: !ruleChanges,
+          });
         } else {
           remaining.push(t);
         }
