@@ -1293,15 +1293,21 @@ const Transactions = () => {
                               <div className="divide-y border-t">
                                 {b.items.map((p) => {
                                   const checked = !excludedFromPreview.has(p.txnId);
-                                  const oldCat = oldCatName(p.oldCategoryId);
-                                  const catChanged = p.newCategoryId !== p.oldCategoryId;
-                                  const trChanged = p.newTreatment !== p.oldTreatment;
                                   const txn = (txns as any[]).find((x) => x.id === p.txnId);
+                                  // Use LIVE txn state so user edits made via the side panel
+                                  // are reflected here immediately.
+                                  const currentCatId = txn ? (txn.category_id ?? null) : p.oldCategoryId;
+                                  const currentTreatment = txn ? ((txn.treatment ?? "normal") as Treatment) : p.oldTreatment;
+                                  const oldCat = oldCatName(currentCatId);
+                                  const catChanged = p.newCategoryId !== currentCatId;
+                                  const trChanged = p.newTreatment !== currentTreatment;
+                                  const alreadyMatches = !catChanged && !trChanged;
                                   return (
                                     <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
                                         className="mt-1"
-                                        checked={checked}
+                                        checked={checked && !alreadyMatches}
+                                        disabled={alreadyMatches}
                                         onCheckedChange={(v) => {
                                           setExcludedFromPreview((prev) => {
                                             const next = new Set(prev);
@@ -1321,6 +1327,9 @@ const Transactions = () => {
                                         <div className="flex items-center justify-between gap-2">
                                           <div className="text-sm truncate flex items-center gap-1.5">
                                             {p.name}
+                                            {alreadyMatches && (
+                                              <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Applied</Badge>
+                                            )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
                                           <div className="text-xs tabular-nums text-muted-foreground">
@@ -1336,7 +1345,7 @@ const Transactions = () => {
                                         {trChanged && (
                                           <div className="text-xs text-muted-foreground truncate">
                                             <span className="opacity-70">Treatment:</span>{" "}
-                                            {treatmentLabelShort(p.oldTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
+                                            {treatmentLabelShort(currentTreatment)} → <span className="text-foreground/90">{treatmentLabelShort(p.newTreatment)}</span>
                                           </div>
                                         )}
                                         {p.reason && (
