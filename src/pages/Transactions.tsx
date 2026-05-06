@@ -1413,29 +1413,41 @@ const Transactions = () => {
                           </button>
                           {!noChangeCollapsed && (
                             <div className="divide-y border-t">
-                              {noChangeItems.map((p) => (
-                                <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2">
-                                      <div className="text-sm truncate">{p.name}</div>
-                                      <div className="text-xs tabular-nums text-muted-foreground">
-                                        {fmtCurrency(p.amount)}
+                              {noChangeItems.map((p) => {
+                                const txn = (txns as any[]).find((x) => x.id === p.txnId);
+                                return (
+                                  <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
+                                    <button
+                                      type="button"
+                                      onClick={() => txn && openDetails(txn)}
+                                      disabled={!txn}
+                                      className="flex-1 min-w-0 text-left rounded -mx-1 px-1 py-0.5 hover:bg-muted/60 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed"
+                                      title="Click to edit transaction"
+                                    >
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="text-sm truncate flex items-center gap-1.5">
+                                          {p.name}
+                                          <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                                        </div>
+                                        <div className="text-xs tabular-nums text-muted-foreground">
+                                          {fmtCurrency(p.amount)}
+                                        </div>
                                       </div>
-                                    </div>
-                                    <div className="text-xs text-muted-foreground truncate">
-                                      <span className="opacity-70">Category:</span>{" "}
-                                      {oldCatName(p.oldCategoryId)}{" "}
-                                      <span className="opacity-70">· Treatment:</span>{" "}
-                                      {treatmentLabelShort(p.oldTreatment)}
-                                    </div>
-                                    {p.reason && (
-                                      <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
-                                        AI · {Math.round(p.confidence * 100)}% — {p.reason}
+                                      <div className="text-xs text-muted-foreground truncate">
+                                        <span className="opacity-70">Category:</span>{" "}
+                                        {oldCatName(txn ? (txn.category_id ?? null) : p.oldCategoryId)}{" "}
+                                        <span className="opacity-70">· Treatment:</span>{" "}
+                                        {treatmentLabelShort((txn ? (txn.treatment ?? "normal") : p.oldTreatment) as Treatment)}
                                       </div>
-                                    )}
+                                      {p.reason && (
+                                        <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
+                                          AI · {Math.round(p.confidence * 100)}% — {p.reason}
+                                        </div>
+                                      )}
+                                    </button>
                                   </div>
-                                </div>
-                              ))}
+                                );
+                              })}
                             </div>
                           )}
                         </div>
