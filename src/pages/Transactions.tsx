@@ -1332,6 +1332,54 @@ const Transactions = () => {
                           </div>
                         );
                       })}
+                      {noChangeItems.length > 0 && (
+                        <div className="rounded-lg border border-confidence-high/20 bg-muted/20">
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                            onClick={() => setNoChangeCollapsed((v) => !v)}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-confidence-high/60" />
+                            <span className="text-sm font-medium">No change needed</span>
+                            <span className="text-xs text-muted-foreground">
+                              {noChangeItems.length} item{noChangeItems.length === 1 ? "" : "s"}
+                            </span>
+                            <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wide">
+                              Confirmed
+                            </Badge>
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {noChangeCollapsed ? "Show breakdown" : "Hide"}
+                            </span>
+                          </button>
+                          {!noChangeCollapsed && (
+                            <div className="divide-y border-t">
+                              {noChangeItems.map((p) => (
+                                <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-sm truncate">{p.name}</div>
+                                      <div className="text-xs tabular-nums text-muted-foreground">
+                                        {fmtCurrency(p.amount)}
+                                      </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      <span className="opacity-70">Category:</span>{" "}
+                                      {oldCatName(p.oldCategoryId)}{" "}
+                                      <span className="opacity-70">· Treatment:</span>{" "}
+                                      {treatmentLabelShort(p.oldTreatment)}
+                                    </div>
+                                    {p.reason && (
+                                      <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
+                                        AI · {Math.round(p.confidence * 100)}% — {p.reason}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </ScrollArea>
                 )}
