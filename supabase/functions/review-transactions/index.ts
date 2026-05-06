@@ -8,7 +8,7 @@
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.0";
 
-const PROMPT_VERSION = "2026-05-05.v1";
+const PROMPT_VERSION = "2026-05-06.v1";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
