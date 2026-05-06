@@ -1308,7 +1308,8 @@ const Transactions = () => {
                                   const oldCat = oldCatName(currentCatId);
                                   const catChanged = p.newCategoryId !== currentCatId;
                                   const trChanged = p.newTreatment !== currentTreatment;
-                                  const alreadyMatches = !catChanged && !trChanged;
+                                  const fullyDismissed = !!(p.dismissed?.category || p.dismissed?.treatment) && !catChanged && !trChanged;
+                                  const alreadyMatches = !catChanged && !trChanged && !fullyDismissed;
                                   return (
                                     <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
@@ -1336,6 +1337,9 @@ const Transactions = () => {
                                             {p.name}
                                             {alreadyMatches && (
                                               <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Applied</Badge>
+                                            )}
+                                            {fullyDismissed && (
+                                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Dismissed</Badge>
                                             )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
