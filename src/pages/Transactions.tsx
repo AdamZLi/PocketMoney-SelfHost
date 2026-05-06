@@ -1415,8 +1415,21 @@ const Transactions = () => {
                             <div className="divide-y border-t">
                               {noChangeItems.map((p) => {
                                 const txn = (txns as any[]).find((x) => x.id === p.txnId);
+                                const checked = !excludedFromPreview.has(p.txnId);
                                 return (
                                   <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
+                                    <Checkbox
+                                      className="mt-1"
+                                      checked={checked}
+                                      onCheckedChange={(v) => {
+                                        setExcludedFromPreview((prev) => {
+                                          const next = new Set(prev);
+                                          if (v) next.delete(p.txnId);
+                                          else next.add(p.txnId);
+                                          return next;
+                                        });
+                                      }}
+                                    />
                                     <button
                                       type="button"
                                       onClick={() => txn && openDetails(txn)}
