@@ -1443,8 +1443,8 @@ const Transactions = () => {
           {scanStage === "applying" && (
             <>
               <div className="px-6 pt-6 pb-2">
-                <h2 className="text-lg font-semibold">Applying changes…</h2>
-                <p className="text-sm text-muted-foreground">Updating your transactions.</p>
+                <h2 className="text-lg font-semibold">Marking as reviewed…</h2>
+                <p className="text-sm text-muted-foreground">Applying changes and updating review state.</p>
               </div>
               <div className="px-6 py-6 space-y-3">
                 <Progress
