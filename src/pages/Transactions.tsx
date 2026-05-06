@@ -76,6 +76,7 @@ const Transactions = () => {
     reason: string;
     source: "rule" | "ai";
     isNoChange: boolean;
+    dismissed?: { category?: boolean; treatment?: boolean };
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
   const [scanStage, setScanStage] = useState<ScanStage>("configure");
@@ -1307,7 +1308,8 @@ const Transactions = () => {
                                   const oldCat = oldCatName(currentCatId);
                                   const catChanged = p.newCategoryId !== currentCatId;
                                   const trChanged = p.newTreatment !== currentTreatment;
-                                  const alreadyMatches = !catChanged && !trChanged;
+                                  const fullyDismissed = !!(p.dismissed?.category || p.dismissed?.treatment) && !catChanged && !trChanged;
+                                  const alreadyMatches = !catChanged && !trChanged && !fullyDismissed;
                                   return (
                                     <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5 group">
                                       <Checkbox
@@ -1335,6 +1337,9 @@ const Transactions = () => {
                                             {p.name}
                                             {alreadyMatches && (
                                               <Badge variant="secondary" className="text-[10px] uppercase tracking-wide">Applied</Badge>
+                                            )}
+                                            {fullyDismissed && (
+                                              <Badge variant="outline" className="text-[10px] uppercase tracking-wide">Dismissed</Badge>
                                             )}
                                             <Pencil className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                                           </div>
@@ -2090,21 +2095,18 @@ const Transactions = () => {
                   );
                   setPreviewItems((prev) => prev.map((p) => {
                     if (p.txnId !== t.id) return p;
-                    const next = { ...p };
+                    const next = { ...p, dismissed: { ...(p.dismissed ?? {}) } };
                     if (field === "category") {
                       next.newCategoryId = curCat;
                       next.newCategoryName = oldCatName;
+                      next.dismissed!.category = true;
                     } else {
                       next.newTreatment = curTr;
                       next.newTreatmentMeta = (t.treatment_meta ?? {}) as TreatmentMeta;
+                      next.dismissed!.treatment = true;
                     }
-                    const stillCat = next.newCategoryId !== curCat;
-                    const stillTr = next.newTreatment !== curTr;
-                    if (!stillCat && !stillTr) {
-                      next.isNoChange = true;
-                      next.bucket = "high";
-                      next.reason = "Dismissed — pending manual review";
-                    }
+                    // Keep the item in its existing bucket (don't move to "No change needed")
+                    // so the user still sees it on the review list and can mark it reviewed.
                     return next;
                   }));
                   setExcludedFromPreview((prev) => {
