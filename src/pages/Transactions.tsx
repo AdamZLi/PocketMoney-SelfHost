@@ -2087,11 +2087,28 @@ const Transactions = () => {
                   if (trDiffers) {
                     await recordFeedback("treatment", "dismissed", { treatment: curTr });
                   }
-                  setPreviewItems((prev) => prev.filter((p) => p.txnId !== t.id));
+                  // Keep the item in the preview so the user can still mark it as
+                  // reviewed after any manual touch-up. We collapse the proposal
+                  // down to the current txn state so no diff is shown.
+                  setPreviewItems((prev) => prev.map((p) => (
+                    p.txnId === t.id
+                      ? {
+                          ...p,
+                          newCategoryId: curCat,
+                          newCategoryName: oldCatName,
+                          newTreatment: curTr,
+                          newTreatmentMeta: (t.treatment_meta ?? {}) as TreatmentMeta,
+                          reason: "Dismissed — pending manual review",
+                          source: "ai",
+                          isNoChange: true,
+                          bucket: "high",
+                        }
+                      : p
+                  )));
                   setExcludedFromPreview((prev) => {
-                    const next = new Set(prev); next.add(t.id); return next;
+                    const next = new Set(prev); next.delete(t.id); return next;
                   });
-                  toast({ title: "Proposal dismissed", description: "The agent will remember this for next time." });
+                  toast({ title: "Proposal dismissed", description: "Item stays in the review list — mark it reviewed when ready." });
                 };
                 return (
                   <div className="rounded-md border bg-muted/30 p-3 space-y-2.5">
