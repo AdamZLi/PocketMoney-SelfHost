@@ -75,6 +75,7 @@ const Transactions = () => {
     bucket: "high" | "medium" | "low";
     reason: string;
     source: "rule" | "ai";
+    isNoChange: boolean;
   };
   type ScanStage = "configure" | "previewing" | "preview" | "applying" | "summary";
   const [scanStage, setScanStage] = useState<ScanStage>("configure");
@@ -84,6 +85,7 @@ const Transactions = () => {
   const [scanTotalConsidered, setScanTotalConsidered] = useState(0);
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
   const [bucketsCollapsed, setBucketsCollapsed] = useState<Record<"high" | "medium" | "low", boolean>>({ high: true, medium: false, low: false });
+  const [noChangeCollapsed, setNoChangeCollapsed] = useState(true);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
 
@@ -665,6 +667,7 @@ const Transactions = () => {
               bucket: "high",
               reason: "Matched a saved category rule.",
               source: "rule",
+              isNoChange: false,
             });
           }
         } else {
@@ -717,8 +720,11 @@ const Transactions = () => {
           const oldTreatment: Treatment = (t.treatment ?? "normal") as Treatment;
           const categoryChanged = p.category_id !== t.category_id;
           const treatmentChanged = p.treatment !== oldTreatment;
-          if (!categoryChanged && !treatmentChanged) continue;
-          const c = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          const isNoChange = !categoryChanged && !treatmentChanged;
+          const rawC = Math.max(0, Math.min(1, Number(p.confidence) || 0));
+          // No-change verdicts always land in High — the agent confirmed
+          // the existing values match its proposal.
+          const c = isNoChange ? Math.max(rawC, 0.9) : rawC;
           const bucket: PreviewItem["bucket"] = c >= 0.9 ? "high" : c >= 0.5 ? "medium" : "low";
           items.push({
             txnId: t.id,
@@ -734,6 +740,7 @@ const Transactions = () => {
             bucket,
             reason: p.reason ?? "",
             source: "ai",
+            isNoChange,
           });
         }
         setScanProgress({ done: Math.min(remaining.length, i + chunk.length), total: remaining.length });
@@ -751,7 +758,7 @@ const Transactions = () => {
 
   // Step 2: apply the previewed changes (minus any user-deselected ones).
   async function applyScanPreview() {
-    const toApply = previewItems.filter((p) => !excludedFromPreview.has(p.txnId));
+    const toApply = previewItems.filter((p) => !p.isNoChange && !excludedFromPreview.has(p.txnId));
     if (toApply.length === 0) {
       toast({ title: "Nothing to apply" });
       return;
@@ -1221,22 +1228,24 @@ const Transactions = () => {
               ring: string;
               items: PreviewItem[];
             }> = [
-              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high") },
+              { key: "high", label: "High confidence", dot: "bg-confidence-high", ring: "border-confidence-high/30", items: previewItems.filter((p) => p.bucket === "high" && !p.isNoChange) },
               { key: "medium", label: "Medium confidence", dot: "bg-confidence-medium", ring: "border-confidence-medium/30", items: previewItems.filter((p) => p.bucket === "medium") },
               { key: "low", label: "Low confidence", dot: "bg-confidence-low", ring: "border-confidence-low/30", items: previewItems.filter((p) => p.bucket === "low") },
             ];
+            const noChangeItems = previewItems.filter((p) => p.isNoChange);
+            const changeItems = previewItems.filter((p) => !p.isNoChange);
             const oldCatName = (id: string | null) =>
               id ? ((categories as any[]).find((c) => c.id === id)?.name ?? "—") : "Uncategorized";
             const treatmentLabelShort = (t: Treatment) => t === "normal" ? "normal" : t;
-            const selectedCount = previewItems.length - excludedFromPreview.size;
+            const selectedCount = changeItems.filter((p) => !excludedFromPreview.has(p.txnId)).length;
             return (
               <>
                 <div className="px-6 pt-6 pb-2">
                   <h2 className="text-lg font-semibold">Review proposed changes</h2>
                   <p className="text-sm text-muted-foreground">
-                    {previewItems.length === 0
-                      ? "No changes proposed."
-                      : `${selectedCount} of ${previewItems.length} change${previewItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered. High-confidence items will be marked reviewed automatically.`}
+                    {changeItems.length === 0
+                      ? `No changes proposed. Agent confirmed all ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} as already correct.`
+                      : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected, from ${scanTotalConsidered} transaction${scanTotalConsidered === 1 ? "" : "s"} considered (${noChangeItems.length} confirmed as no change). High-confidence items will be marked reviewed automatically.`}
                   </p>
                 </div>
                 {previewItems.length > 0 && (
@@ -1323,6 +1332,54 @@ const Transactions = () => {
                           </div>
                         );
                       })}
+                      {noChangeItems.length > 0 && (
+                        <div className="rounded-lg border border-confidence-high/20 bg-muted/20">
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                            onClick={() => setNoChangeCollapsed((v) => !v)}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-confidence-high/60" />
+                            <span className="text-sm font-medium">No change needed</span>
+                            <span className="text-xs text-muted-foreground">
+                              {noChangeItems.length} item{noChangeItems.length === 1 ? "" : "s"}
+                            </span>
+                            <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wide">
+                              Confirmed
+                            </Badge>
+                            <span className="ml-auto text-xs text-muted-foreground">
+                              {noChangeCollapsed ? "Show breakdown" : "Hide"}
+                            </span>
+                          </button>
+                          {!noChangeCollapsed && (
+                            <div className="divide-y border-t">
+                              {noChangeItems.map((p) => (
+                                <div key={p.txnId} className="flex items-start gap-3 px-3 py-2.5">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <div className="text-sm truncate">{p.name}</div>
+                                      <div className="text-xs tabular-nums text-muted-foreground">
+                                        {fmtCurrency(p.amount)}
+                                      </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground truncate">
+                                      <span className="opacity-70">Category:</span>{" "}
+                                      {oldCatName(p.oldCategoryId)}{" "}
+                                      <span className="opacity-70">· Treatment:</span>{" "}
+                                      {treatmentLabelShort(p.oldTreatment)}
+                                    </div>
+                                    {p.reason && (
+                                      <div className="text-[11px] text-muted-foreground/80 mt-0.5 truncate" title={p.reason}>
+                                        AI · {Math.round(p.confidence * 100)}% — {p.reason}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </ScrollArea>
                 )}
