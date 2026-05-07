@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/hooks/use-toast";
-import { Trash2 } from "lucide-react";
+import { Pencil, Trash2, Check, X } from "lucide-react";
 
 const Categories = () => {
   const qc = useQueryClient();
