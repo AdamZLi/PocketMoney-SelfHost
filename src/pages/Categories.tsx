@@ -44,6 +44,26 @@ const Categories = () => {
     if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
     qc.invalidateQueries({ queryKey: ["categories"] });
   }
+  function startEdit(c: any) {
+    setEditingId(c.id);
+    setEditName(c.name ?? "");
+    setEditParent(c.parent_category ?? "");
+  }
+  function cancelEdit() {
+    setEditingId(null);
+    setEditName("");
+    setEditParent("");
+  }
+  async function saveEdit(id: string) {
+    if (!editName.trim()) return;
+    const { error } = await supabase
+      .from("categories")
+      .update({ name: editName.trim(), parent_category: editParent.trim() || null })
+      .eq("id", id);
+    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    cancelEdit();
+    qc.invalidateQueries({ queryKey: ["categories"] });
+  }
   async function addRule() {
     if (!ruleCat || !pattern.trim()) return;
     const { error } = await supabase.from("category_rules").insert({
