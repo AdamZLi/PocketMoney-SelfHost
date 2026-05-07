@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { TreatmentMeta } from "@/lib/treatments";
-import { Check, Trash2, User } from "lucide-react";
+import { Check, Trash2, Undo2, User } from "lucide-react";
 import { toast } from "sonner";
 
 type Txn = {
@@ -99,6 +99,41 @@ const Review = () => {
     },
   });
 
+  // Settled splits (reimbursement_status = 'settled') — both whole-txn and split parts.
+  const { data: settled = [] } = useQuery({
+    queryKey: ["review", "reimbursable_settled"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id,date,name,amount,treatment,treatment_meta")
+        .in("treatment", ["reimbursable", "split"])
+        .order("date", { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+      const out: (Txn & { partIndex?: number; partLabel?: string; partAmount?: number })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "reimbursable") {
+          if ((row.treatment_meta?.reimbursement_status) === "settled") out.push(row);
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "reimbursable") return;
+            if ((p.meta?.reimbursement_status) !== "settled") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              partIndex: i,
+              partLabel: p.label,
+              partAmount: p.amount,
+              amount: p.amount,
+            });
+          });
+        }
+      }
+      return out;
+    },
+  });
+
   const { data: people = [] } = useQuery({
     queryKey: ["people"],
     queryFn: async () => {
@@ -147,7 +182,7 @@ const Review = () => {
   async function applyStatus(
     t: Txn & { partIndex?: number },
     field: "reimbursement_status" | "refund_status",
-    value: "settled" | "received",
+    value: "settled" | "received" | "pending",
   ) {
     if (typeof t.partIndex === "number") {
       const { data: parent } = await supabase
@@ -174,6 +209,15 @@ const Review = () => {
     if (error) toast.error(error.message);
     else {
       toast.success("Marked settled");
+      qc.invalidateQueries({ queryKey: ["review"] });
+    }
+  }
+
+  async function unmarkSettled(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "reimbursement_status", "pending");
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Moved back to pending");
       qc.invalidateQueries({ queryKey: ["review"] });
     }
   }
@@ -237,6 +281,14 @@ const Review = () => {
             {refunds.length > 0 && (
               <Badge variant="secondary" className="ml-2">
                 {refunds.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="settled">
+            Settled
+            {settled.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {settled.length}
               </Badge>
             )}
           </TabsTrigger>
@@ -357,6 +409,53 @@ const Review = () => {
                     </Button>
                   </div>
                 ))}
+              </div>
+            </Card>
+          )}
+        </TabsContent>
+
+        <TabsContent value="settled" className="space-y-4">
+          {settled.length === 0 ? (
+            <Card className="p-10 text-center text-sm text-muted-foreground">
+              No settled items yet. Items you mark as settled will appear here.
+            </Card>
+          ) : (
+            <Card className="p-4">
+              <div className="divide-y">
+                {settled.map((t) => {
+                  const total = Math.abs(Number(t.amount));
+                  const share =
+                    typeof t.treatment_meta?.your_share === "number"
+                      ? t.treatment_meta.your_share
+                      : total;
+                  const owed = total - share;
+                  const person = (t.treatment_meta?.owed_by || "Unassigned").trim() || "Unassigned";
+                  return (
+                    <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
+                      <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
+                      <span className="flex-1 truncate">
+                        {t.name}
+                        {(t as any).partLabel && (
+                          <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
+                        )}
+                      </span>
+                      <span className="text-muted-foreground text-xs w-24 truncate">{person}</span>
+                      <span className="text-muted-foreground text-xs">
+                        Your {fmtCurrency(share)} of {fmtCurrency(total)}
+                      </span>
+                      <span className="font-medium w-20 text-right">{fmtCurrency(owed)}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7"
+                        title="Move back to pending"
+                        onClick={() => unmarkSettled(t)}
+                      >
+                        <Undo2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  );
+                })}
               </div>
             </Card>
           )}
