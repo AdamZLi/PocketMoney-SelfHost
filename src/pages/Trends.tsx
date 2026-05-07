@@ -1016,6 +1016,7 @@ function CategoryTrends({
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {isLoading ? (
