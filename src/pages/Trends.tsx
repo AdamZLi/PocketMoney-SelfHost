@@ -1067,7 +1067,7 @@ function CategoryTrends({
                   <span
                     className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${badgeClass(s)}`}
                   >
-                    {badgeLabel(s, row.delta)}
+                    {badgeLabel(s, row.delta, row.current - row.baseline)}
                   </span>
                 </div>
                 <div className="w-[90px] h-[44px] shrink-0">
