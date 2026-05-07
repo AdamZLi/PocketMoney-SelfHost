@@ -46,7 +46,8 @@ export function OwedByCombobox({ value, onChange, placeholder, className }: Prop
       if (error) throw error;
       const set = new Set<string>();
       (data ?? []).forEach((t: any) => {
-        const n = (t.treatment_meta?.owed_by as string | undefined)?.trim();
+        const raw = t.treatment_meta?.owed_by;
+        const n = typeof raw === "string" ? raw.trim() : "";
         if (n) set.add(n);
       });
       return Array.from(set).sort((a, b) => a.localeCompare(b));
@@ -57,7 +58,9 @@ export function OwedByCombobox({ value, onChange, placeholder, className }: Prop
     const merged = new Map<string, "saved" | "history">();
     pastNames.forEach((n) => merged.set(n, "history"));
     people.forEach((n) => merged.set(n, "saved")); // saved overrides history label
-    return Array.from(merged, ([name, source]) => ({ name, source }));
+    return Array.from(merged, ([name, source]) => ({ name, source })).filter(
+      (p) => typeof p.name === "string" && p.name.length > 0,
+    );
   }, [people, pastNames]);
 
   const q = value.trim().toLowerCase();
