@@ -343,22 +343,28 @@ const Trends = () => {
       {/* Title + range pills */}
       <header className="flex items-end justify-between gap-6 flex-wrap mb-10">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Trends</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Visualization</p>
           <h1 className="text-3xl font-medium tracking-tight mt-2">Spending over time</h1>
         </div>
         {!(dateFrom || dateTo) && (
           <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
-            {[3, 6, 12, 24].map((n) => (
+            {([
+              { k: "3", label: "3M" },
+              { k: "6", label: "6M" },
+              { k: "12", label: "12M" },
+              { k: "ytd", label: "YTD" },
+              { k: "all", label: "All time" },
+            ] as { k: RangeKey; label: string }[]).map(({ k, label }) => (
               <button
-                key={n}
-                onClick={() => setMonths(n)}
+                key={k}
+                onClick={() => setRangeKey(k)}
                 className={`h-7 px-3 rounded-full text-xs font-medium tabular-nums transition-colors ${
-                  months === n
+                  rangeKey === k
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {n}M
+                {label}
               </button>
             ))}
           </div>
