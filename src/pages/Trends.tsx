@@ -661,6 +661,162 @@ const Trends = () => {
   );
 };
 
+function CategoryTreemap({
+  rows,
+  buckets,
+  showRaw,
+  categoryOrder,
+}: {
+  rows: Row[];
+  buckets: string[];
+  showRaw: boolean;
+  categoryOrder: string[];
+}) {
+  const colorFor = (name: string) => {
+    const i = categoryOrder.indexOf(name);
+    return i === -1 ? NEUTRAL : PALETTE[i % PALETTE.length];
+  };
+
+  const { data, total } = useMemo(() => {
+    const totals = new Map<string, number>();
+    const counts = new Map<string, number>();
+    const bucketSet = new Set(buckets);
+    for (const r of rows) {
+      const cat = bucketName(r);
+      let contributed = 0;
+      if (showRaw) {
+        if (!bucketSet.has(monthKey(r.date))) continue;
+        const a = Number(r.amount);
+        if (!isFinite(a) || a <= 0 || r.excluded) continue;
+        contributed = a;
+      } else {
+        for (const mk of buckets) {
+          const eff = effectiveMonthlyContribution(
+            {
+              date: r.date,
+              amount: Number(r.amount),
+              treatment: (r.treatment as any) ?? "normal",
+              treatment_meta: r.treatment_meta ?? {},
+              linked_txn_id: r.linked_txn_id,
+              excluded: r.excluded,
+            },
+            mk,
+          );
+          if (eff > 0) contributed += eff;
+        }
+      }
+      if (contributed <= 0) continue;
+      totals.set(cat, (totals.get(cat) ?? 0) + contributed);
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    const total = [...totals.values()].reduce((a, b) => a + b, 0);
+    const data = [...totals.entries()]
+      .map(([name, value]) => ({ name, size: value, count: counts.get(name) ?? 0 }))
+      .sort((a, b) => b.size - a.size);
+    return { data, total };
+  }, [rows, buckets, showRaw]);
+
+  if (data.length === 0) return null;
+
+  const TreemapCell = (props: any) => {
+    const { x, y, width, height, name, size } = props;
+    if (typeof name !== "string") return null;
+    const fill = colorFor(name);
+    const pct = total > 0 ? (size / total) * 100 : 0;
+    const showLabel = width >= 80 && height >= 40;
+    const showFull = width >= 120;
+    const charBudget = Math.max(1, Math.floor((width - 16) / 7));
+    const truncatedName = name.length > charBudget ? name.slice(0, charBudget - 1) + "…" : name;
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          style={{ fill, stroke: "hsl(var(--background))", strokeWidth: 2 }}
+        />
+        {showLabel && (
+          <text
+            x={x + 10}
+            y={y + 22}
+            fill="#fff"
+            fontSize={12}
+            fontWeight={600}
+            style={{ pointerEvents: "none" }}
+          >
+            <tspan x={x + 10} dy={0}>{truncatedName}</tspan>
+            {showFull && (
+              <>
+                <tspan x={x + 10} dy={16} fontWeight={500} fontSize={11} opacity={0.95}>
+                  {fmtCurrency(size)}
+                </tspan>
+                <tspan x={x + 10} dy={14} fontWeight={400} fontSize={10} opacity={0.85}>
+                  {pct.toFixed(1)}%
+                </tspan>
+              </>
+            )}
+          </text>
+        )}
+      </g>
+    );
+  };
+
+  const TreemapTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const p = payload[0]?.payload;
+    if (!p) return null;
+    const pct = total > 0 ? (p.size / total) * 100 : 0;
+    return (
+      <div className="rounded-xl border border-border/60 bg-background/95 backdrop-blur shadow-xl p-4 min-w-[220px]">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: colorFor(p.name) }} />
+          <span className="text-sm font-medium">{p.name}</span>
+        </div>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <div className="flex justify-between gap-4">
+            <span>Total</span>
+            <span className="tabular-nums text-foreground">{fmtCurrency(p.size)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Share</span>
+            <span className="tabular-nums text-foreground">{pct.toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Transactions</span>
+            <span className="tabular-nums text-foreground">{p.count}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section className="mt-14 pt-10 border-t border-border/60">
+      <div className="mb-6">
+        <h2 className="text-base font-medium">Composition</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Spend by category for the selected period
+        </p>
+      </div>
+      <div className="h-[420px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <Treemap
+            data={data}
+            dataKey="size"
+            nameKey="name"
+            stroke="hsl(var(--background))"
+            isAnimationActive={false}
+            content={<TreemapCell />}
+          >
+            <Tooltip content={<TreemapTooltip />} />
+          </Treemap>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
+
 function MonthBreakdown({
   month,
   rows,
