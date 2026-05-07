@@ -20,6 +20,7 @@ import {
   ComposedChart,
   Bar,
   Line,
+  LineChart,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -650,6 +651,15 @@ const Trends = () => {
         categoryOrder={categories}
       />
 
+      <CategoryTrends
+        rows={rows}
+        buckets={buckets}
+        showRaw={showRaw}
+        categoryOrder={categories}
+        isLoading={isLoading}
+      />
+
+
       <MonthBreakdown
         month={selectedMonth}
         rows={rows}
@@ -813,6 +823,234 @@ function CategoryTreemap({
           </Treemap>
         </ResponsiveContainer>
       </div>
+    </section>
+  );
+}
+
+function CategoryTrends({
+  rows,
+  buckets,
+  showRaw,
+  categoryOrder,
+  isLoading,
+}: {
+  rows: Row[];
+  buckets: string[];
+  showRaw: boolean;
+  categoryOrder: string[];
+  isLoading: boolean;
+}) {
+  const [filter, setFilter] = useState<"all" | "up" | "down">("all");
+
+  const colorFor = (name: string) => {
+    const i = categoryOrder.indexOf(name);
+    return i === -1 ? NEUTRAL : PALETTE[i % PALETTE.length];
+  };
+
+  // Use up to 12 most recent buckets for the sparkline window.
+  const sparkBuckets = useMemo(
+    () => (buckets.length > 12 ? buckets.slice(-12) : buckets),
+    [buckets],
+  );
+
+  const items = useMemo(() => {
+    if (buckets.length < 2) return [];
+    const bucketIdx = new Map(buckets.map((b, i) => [b, i]));
+    const seriesByCat = new Map<string, number[]>();
+
+    const ensure = (cat: string) => {
+      let s = seriesByCat.get(cat);
+      if (!s) {
+        s = new Array(buckets.length).fill(0);
+        seriesByCat.set(cat, s);
+      }
+      return s;
+    };
+
+    for (const r of rows) {
+      const cat = bucketName(r);
+      if (showRaw) {
+        const idx = bucketIdx.get(monthKey(r.date));
+        if (idx === undefined) continue;
+        const a = Number(r.amount);
+        if (!isFinite(a) || a <= 0 || r.excluded) continue;
+        ensure(cat)[idx] += a;
+      } else {
+        for (let i = 0; i < buckets.length; i++) {
+          const eff = effectiveMonthlyContribution(
+            {
+              date: r.date,
+              amount: Number(r.amount),
+              treatment: (r.treatment as any) ?? "normal",
+              treatment_meta: r.treatment_meta ?? {},
+              linked_txn_id: r.linked_txn_id,
+              excluded: r.excluded,
+            },
+            buckets[i],
+          );
+          if (eff > 0) ensure(cat)[i] += eff;
+        }
+      }
+    }
+
+    const out = [...seriesByCat.entries()].map(([name, series]) => {
+      const current = series[series.length - 1] ?? 0;
+      const prior = series.slice(0, -1);
+      const baseline = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : 0;
+      const avg = series.reduce((a, b) => a + b, 0) / series.length;
+      const delta = baseline > 0 ? ((current - baseline) / baseline) * 100 : null;
+      return { name, series, current, baseline, avg, delta };
+    });
+
+    // Drop categories with no activity at all.
+    return out.filter((x) => x.avg > 0 || x.current > 0);
+  }, [rows, buckets, showRaw]);
+
+  const filtered = useMemo(() => {
+    let arr = items;
+    if (filter === "up") arr = arr.filter((x) => x.delta != null && x.delta > 8);
+    else if (filter === "down") arr = arr.filter((x) => x.delta != null && x.delta < -8);
+    return [...arr].sort((a, b) => {
+      const av = a.delta == null ? -1 : Math.abs(a.delta);
+      const bv = b.delta == null ? -1 : Math.abs(b.delta);
+      return bv - av;
+    });
+  }, [items, filter]);
+
+  const subtitle =
+    buckets.length >= 2 ? `vs. your ${buckets.length}-month average` : "Not enough history yet";
+
+  type State = "up" | "down" | "stable" | "new";
+  const stateFor = (delta: number | null, baseline: number): State => {
+    if (delta == null) return baseline === 0 ? "new" : "stable";
+    if (delta > 8) return "up";
+    if (delta < -8) return "down";
+    return "stable";
+  };
+
+  const badgeClass = (s: State) => {
+    if (s === "up") return "bg-rose-100 text-rose-700 dark:bg-rose-950/40 dark:text-rose-300";
+    if (s === "down") return "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300";
+    return "bg-muted text-muted-foreground";
+  };
+
+  const sparkColor = (s: State) => {
+    if (s === "up") return "hsl(347 77% 50%)";
+    if (s === "down") return "hsl(160 60% 40%)";
+    return "hsl(var(--muted-foreground) / 0.6)";
+  };
+
+  const badgeLabel = (s: State, delta: number | null) => {
+    if (s === "new") return "new";
+    if (s === "stable") return "~stable";
+    const v = Math.round(delta!);
+    return `${v > 0 ? "+" : ""}${v}% vs avg`;
+  };
+
+  return (
+    <section className="mt-14 pt-10 border-t border-border/60">
+      <div className="flex items-end justify-between gap-4 mb-6 flex-wrap">
+        <div>
+          <h2 className="text-base font-medium">What's changing</h2>
+          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+        </div>
+        {buckets.length >= 2 && (
+          <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
+            {([
+              { k: "all", label: "All" },
+              { k: "up", label: "Increasing" },
+              { k: "down", label: "Decreasing" },
+            ] as { k: typeof filter; label: string }[]).map(({ k, label }) => (
+              <button
+                key={k}
+                onClick={() => setFilter(k)}
+                className={`h-7 px-3 rounded-full text-xs font-medium transition-colors ${
+                  filter === k
+                    ? "bg-background text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {isLoading ? (
+        <div className="h-[120px] flex items-center justify-center text-sm text-muted-foreground">
+          Loading…
+        </div>
+      ) : buckets.length < 2 || filtered.length === 0 ? (
+        <p className="text-sm text-muted-foreground">
+          {buckets.length < 2 ? "Not enough history yet." : "No categories match this filter."}
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {filtered.map((row) => {
+            const s = stateFor(row.delta, row.baseline);
+            const stroke = sparkColor(s);
+            const sparkData = (buckets.length > 12 ? row.series.slice(-12) : row.series).map(
+              (v, i) => ({ i, v }),
+            );
+            const lastIdx = sparkData.length - 1;
+            // TODO: link to category detail when implemented
+            return (
+              <div
+                key={row.name}
+                className="flex items-center gap-4 rounded-xl border border-border/60 px-4 py-3"
+              >
+                <span
+                  className="inline-block h-2 w-2 rounded-full shrink-0"
+                  style={{ background: colorFor(row.name) }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[13px] font-semibold truncate">{row.name}</div>
+                  <div className="text-xs text-muted-foreground tabular-nums">
+                    avg {fmtCurrency(row.avg)} / mo
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-sm font-semibold tabular-nums">
+                    {fmtCurrency(row.current)}
+                  </div>
+                  <span
+                    className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${badgeClass(s)}`}
+                  >
+                    {badgeLabel(s, row.delta)}
+                  </span>
+                </div>
+                <div className="w-[90px] h-[44px] shrink-0">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={sparkData} margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+                      <Line
+                        type="monotone"
+                        dataKey="v"
+                        stroke={stroke}
+                        strokeWidth={1.5}
+                        isAnimationActive={false}
+                        dot={(props: any) => {
+                          if (props.index !== lastIdx) return <g key={props.index} />;
+                          return (
+                            <circle
+                              key={props.index}
+                              cx={props.cx}
+                              cy={props.cy}
+                              r={2.5}
+                              fill={stroke}
+                            />
+                          );
+                        }}
+                        activeDot={false}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </section>
   );
 }
