@@ -1055,6 +1055,7 @@ function CategoryTrends({
   );
 }
 
+function MonthBreakdown({
   month,
   rows,
   showRaw,
