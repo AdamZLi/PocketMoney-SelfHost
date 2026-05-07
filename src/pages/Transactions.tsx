@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
@@ -92,6 +92,32 @@ const Transactions = () => {
   const [noChangeCollapsed, setNoChangeCollapsed] = useState(true);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [scanPanelWidth, setScanPanelWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 480;
+    const saved = Number(localStorage.getItem("ledger.scanPanelWidth"));
+    return saved >= 360 && saved <= 1400 ? saved : 480;
+  });
+  const scanResizingRef = useRef(false);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!scanResizingRef.current) return;
+      const w = Math.min(1400, Math.max(360, window.innerWidth - e.clientX));
+      setScanPanelWidth(w);
+    };
+    const onUp = () => {
+      if (!scanResizingRef.current) return;
+      scanResizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      localStorage.setItem("ledger.scanPanelWidth", String(scanPanelWidth));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [scanPanelWidth]);
 
   // Inline merchant rename
   const [renameTarget, setRenameTarget] = useState<{ id: string; oldName: string } | null>(null);
@@ -1150,10 +1176,27 @@ const Transactions = () => {
 
       {scanOpen && (
         <aside
-          className="fixed top-0 right-0 z-40 h-screen w-full sm:max-w-md border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
+          style={{ width: scanPanelWidth }}
+          className="fixed top-0 right-0 z-40 h-screen max-w-[100vw] border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
           role="dialog"
           aria-label="AI scan and review"
         >
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              scanResizingRef.current = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onDoubleClick={() => {
+              setScanPanelWidth(480);
+              localStorage.setItem("ledger.scanPanelWidth", "480");
+            }}
+            className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors z-10"
+          />
           <button
             type="button"
             onClick={() => { if (!scanning) { setScanOpen(false); resetScanDialog(); } }}
