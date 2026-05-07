@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { TreatmentMeta } from "@/lib/treatments";
 import { Check, ExternalLink, Trash2, Undo2, User } from "lucide-react";
-import { Link } from "react-router-dom";
+import { TransactionEditSheet } from "@/components/TransactionEditSheet";
 import { toast } from "sonner";
 
 type Txn = {
