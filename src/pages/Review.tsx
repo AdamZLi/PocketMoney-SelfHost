@@ -160,7 +160,11 @@ const Review = () => {
       cur.total += owed;
       map.set(person, cur);
     });
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+    return Array.from(map.values()).sort((a, b) => {
+      if (a.person === "Unassigned") return -1;
+      if (b.person === "Unassigned") return 1;
+      return a.person.localeCompare(b.person);
+    });
   }, [splits]);
 
   const personNames = useMemo(() => {
