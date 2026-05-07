@@ -92,6 +92,32 @@ const Transactions = () => {
   const [noChangeCollapsed, setNoChangeCollapsed] = useState(true);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
+  const [scanPanelWidth, setScanPanelWidth] = useState<number>(() => {
+    if (typeof window === "undefined") return 480;
+    const saved = Number(localStorage.getItem("ledger.scanPanelWidth"));
+    return saved >= 360 && saved <= 1400 ? saved : 480;
+  });
+  const scanResizingRef = useRef(false);
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!scanResizingRef.current) return;
+      const w = Math.min(1400, Math.max(360, window.innerWidth - e.clientX));
+      setScanPanelWidth(w);
+    };
+    const onUp = () => {
+      if (!scanResizingRef.current) return;
+      scanResizingRef.current = false;
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+      localStorage.setItem("ledger.scanPanelWidth", String(scanPanelWidth));
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [scanPanelWidth]);
 
   // Inline merchant rename
   const [renameTarget, setRenameTarget] = useState<{ id: string; oldName: string } | null>(null);
