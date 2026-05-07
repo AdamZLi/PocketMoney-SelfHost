@@ -1,35 +1,43 @@
-## Why the section moves
+## Trends → Visualization: add category Treemap
 
-In `src/pages/Review.tsx` the "Owed" tab groups split transactions by person and then sorts the list by total owed amount (descending):
+### Scope
 
-```ts
-return Array.from(map.values()).sort((a, b) => b.total - a.total); // line 163
-```
+1. **Rename page title** from "Trends" → "Visualization" (eyebrow + H1). Keep nav label and `/trends` route as-is.
+2. **Update the time-range toggle** to: `3M / 6M / 12M / YTD / All time`. Default `12M`. Both the bar chart and the new treemap read from this single toggle.
+3. **Add a Treemap section** directly below the existing monthly bar chart.
 
-When you mark items in **Unassigned** as settled (or otherwise change them), that group's total drops, so it gets re-sorted to a lower position — which looks like the section "jumped to the bottom."
+### Time range toggle
 
-## Fix
+- Options: `3M`, `6M`, `12M`, `YTD`, `All time`. Default `12M`.
+- `3M / 6M / 12M`: last N months including current.
+- `YTD`: Jan 1 of current year → today.
+- `All time`: from the earliest transaction date in the DB → today (one-time `min(date)` query, cached).
+- Custom date popover continues to override the pill.
+- Both bar chart and treemap derive from the same `range`.
 
-Stop re-ordering groups based on a value that mutates as the user works. Pick one stable ordering and stick with it:
+### Treemap
 
-1. Sort groups alphabetically by person name (case-insensitive), with `Unassigned` pinned to either the top or the bottom consistently.
-2. Tie-break only on name, never on total.
+**Aggregation** (over the same `range` and loaded `rows`):
+- Per category bucket (`parent_category || name || "Uncategorized"`):
+  - `total`: respects `showRaw` toggle (raw positive amounts when on; sum of `effectiveMonthlyContribution` across the window's months when off — same logic as bar chart).
+  - `count`: number of transactions contributing > 0 in the window.
+  - `pct`: total / grand total.
+- Skips excluded rows and non-positive amounts.
+- Respects the page's account filter. Ignores the per-category dropdown (a single-category treemap is meaningless).
 
-Concretely, replace the sort on line 163 with:
+**Colors:** Reuse the page's existing `categories` array order + `PALETTE` / `NEUTRAL` so each category's fill matches the bar chart.
 
-```ts
-return Array.from(map.values()).sort((a, b) => {
-  if (a.person === "Unassigned") return -1; // or 1 to pin to bottom
-  if (b.person === "Unassigned") return 1;
-  return a.person.localeCompare(b.person);
-});
-```
+**Rendering** (Recharts `<Treemap>` + custom `content`):
+- Label rules by cell `width` × `height`:
+  - `width < 80 || height < 40` → no label
+  - `80 ≤ width < 120` → category name only (truncated)
+  - `width ≥ 120` → name + dollar total + percent, stacked
+- White text with a subtle shadow for legibility.
 
-The displayed `total` per group still updates live, but the section's position on the page stays put while the user works through it.
+**Tooltip:** Same style as the bar chart's tooltip card; shows category name, total spend, % of total, transaction count.
 
-No other tabs (Refunds, Settled, People) have the same problem — only the Owed tab sorts by a mutating value.
+**Layout:** Full-width section, ~420px tall, no card chrome. Section header `Composition` with a short subtitle. Placed directly below the bar chart `<section>`.
 
-## Open question
+### Files to edit
 
-Where should `Unassigned` sit — pinned to the **top** (so it's always the first thing the user triages) or the **bottom** (so named people come first)? I'll default to **top** unless you say otherwise.  
-=> Answer: Unassigned should always sit on the top.
+- `src/pages/Trends.tsx` — rename header; replace pill values; extend `range` memo for `YTD` and `All time`; add new treemap `<section>` below the bar chart.

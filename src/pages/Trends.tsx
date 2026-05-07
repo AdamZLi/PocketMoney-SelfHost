@@ -24,7 +24,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Treemap,
 } from "recharts";
+
+type RangeKey = "3" | "6" | "12" | "ytd" | "all";
 
 // Refined, restrained palette — soft jewel tones rather than saturated primaries.
 const PALETTE = [
@@ -77,7 +80,7 @@ const bucketName = (r: Row) =>
   r.categories?.parent_category || r.categories?.name || "Uncategorized";
 
 const Trends = () => {
-  const [months, setMonths] = useState(12);
+  const [rangeKey, setRangeKey] = useState<RangeKey>("12");
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryBucket, setCategoryBucket] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
@@ -99,6 +102,14 @@ const Trends = () => {
       (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
   });
 
+  const { data: minDateRow } = useQuery({
+    queryKey: ["txn-min-date"],
+    queryFn: async () => {
+      const { data } = await supabase.from("transactions").select("date").order("date", { ascending: true }).limit(1);
+      return data?.[0]?.date as string | undefined;
+    },
+  });
+
   const range = useMemo(() => {
     if (dateFrom || dateTo) {
       const from =
@@ -107,11 +118,20 @@ const Trends = () => {
       const to = dateTo || new Date().toISOString().slice(0, 10);
       return { from, to };
     }
-    const since = new Date();
-    since.setMonth(since.getMonth() - (months - 1));
+    const today = new Date();
+    const to = today.toISOString().slice(0, 10);
+    if (rangeKey === "ytd") {
+      return { from: new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10), to };
+    }
+    if (rangeKey === "all") {
+      return { from: minDateRow ?? new Date(2000, 0, 1).toISOString().slice(0, 10), to };
+    }
+    const n = Number(rangeKey);
+    const since = new Date(today);
+    since.setMonth(since.getMonth() - (n - 1));
     since.setDate(1);
-    return { from: since.toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) };
-  }, [months, dateFrom, dateTo]);
+    return { from: since.toISOString().slice(0, 10), to };
+  }, [rangeKey, dateFrom, dateTo, minDateRow]);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["trends", "monthly", range.from, range.to, accountId, showRaw],
@@ -249,10 +269,13 @@ const Trends = () => {
     ? [...totalsByMonth.values()].filter((v) => v > 0)
     : chartData.map((r: any) => Number(r[categoryBucket]) || 0).filter((v) => v > 0);
 
+  const rangeLabelMap: Record<RangeKey, string> = {
+    "3": "Last 3 months", "6": "Last 6 months", "12": "Last 12 months", ytd: "Year to date", all: "All time",
+  };
   const dateRangeLabel =
     dateFrom || dateTo
       ? `${dateFrom ? fmtDate(dateFrom) : "…"} → ${dateTo ? fmtDate(dateTo) : "…"}`
-      : `Last ${months} months`;
+      : rangeLabelMap[rangeKey];
 
   const activeFilters =
     (accountId !== "all" ? 1 : 0) +
@@ -320,22 +343,28 @@ const Trends = () => {
       {/* Title + range pills */}
       <header className="flex items-end justify-between gap-6 flex-wrap mb-10">
         <div>
-          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Trends</p>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Visualization</p>
           <h1 className="text-3xl font-medium tracking-tight mt-2">Spending over time</h1>
         </div>
         {!(dateFrom || dateTo) && (
           <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
-            {[3, 6, 12, 24].map((n) => (
+            {([
+              { k: "3", label: "3M" },
+              { k: "6", label: "6M" },
+              { k: "12", label: "12M" },
+              { k: "ytd", label: "YTD" },
+              { k: "all", label: "All time" },
+            ] as { k: RangeKey; label: string }[]).map(({ k, label }) => (
               <button
-                key={n}
-                onClick={() => setMonths(n)}
+                key={k}
+                onClick={() => setRangeKey(k)}
                 className={`h-7 px-3 rounded-full text-xs font-medium tabular-nums transition-colors ${
-                  months === n
+                  rangeKey === k
                     ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {n}M
+                {label}
               </button>
             ))}
           </div>
@@ -614,6 +643,13 @@ const Trends = () => {
         )}
       </section>
 
+      <CategoryTreemap
+        rows={rows}
+        buckets={buckets}
+        showRaw={showRaw}
+        categoryOrder={categories}
+      />
+
       <MonthBreakdown
         month={selectedMonth}
         rows={rows}
@@ -624,6 +660,162 @@ const Trends = () => {
     </div>
   );
 };
+
+function CategoryTreemap({
+  rows,
+  buckets,
+  showRaw,
+  categoryOrder,
+}: {
+  rows: Row[];
+  buckets: string[];
+  showRaw: boolean;
+  categoryOrder: string[];
+}) {
+  const colorFor = (name: string) => {
+    const i = categoryOrder.indexOf(name);
+    return i === -1 ? NEUTRAL : PALETTE[i % PALETTE.length];
+  };
+
+  const { data, total } = useMemo(() => {
+    const totals = new Map<string, number>();
+    const counts = new Map<string, number>();
+    const bucketSet = new Set(buckets);
+    for (const r of rows) {
+      const cat = bucketName(r);
+      let contributed = 0;
+      if (showRaw) {
+        if (!bucketSet.has(monthKey(r.date))) continue;
+        const a = Number(r.amount);
+        if (!isFinite(a) || a <= 0 || r.excluded) continue;
+        contributed = a;
+      } else {
+        for (const mk of buckets) {
+          const eff = effectiveMonthlyContribution(
+            {
+              date: r.date,
+              amount: Number(r.amount),
+              treatment: (r.treatment as any) ?? "normal",
+              treatment_meta: r.treatment_meta ?? {},
+              linked_txn_id: r.linked_txn_id,
+              excluded: r.excluded,
+            },
+            mk,
+          );
+          if (eff > 0) contributed += eff;
+        }
+      }
+      if (contributed <= 0) continue;
+      totals.set(cat, (totals.get(cat) ?? 0) + contributed);
+      counts.set(cat, (counts.get(cat) ?? 0) + 1);
+    }
+    const total = [...totals.values()].reduce((a, b) => a + b, 0);
+    const data = [...totals.entries()]
+      .map(([name, value]) => ({ name, size: value, count: counts.get(name) ?? 0 }))
+      .sort((a, b) => b.size - a.size);
+    return { data, total };
+  }, [rows, buckets, showRaw]);
+
+  if (data.length === 0) return null;
+
+  const TreemapCell = (props: any) => {
+    const { x, y, width, height, name, size } = props;
+    if (typeof name !== "string") return null;
+    const fill = colorFor(name);
+    const pct = total > 0 ? (size / total) * 100 : 0;
+    const showLabel = width >= 80 && height >= 40;
+    const showFull = width >= 120;
+    const charBudget = Math.max(1, Math.floor((width - 16) / 7));
+    const truncatedName = name.length > charBudget ? name.slice(0, charBudget - 1) + "…" : name;
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          style={{ fill, stroke: "hsl(var(--background))", strokeWidth: 2 }}
+        />
+        {showLabel && (
+          <text
+            x={x + 10}
+            y={y + 22}
+            fill="#fff"
+            fontSize={12}
+            fontWeight={600}
+            style={{ pointerEvents: "none" }}
+          >
+            <tspan x={x + 10} dy={0}>{truncatedName}</tspan>
+            {showFull && (
+              <>
+                <tspan x={x + 10} dy={16} fontWeight={500} fontSize={11} opacity={0.95}>
+                  {fmtCurrency(size)}
+                </tspan>
+                <tspan x={x + 10} dy={14} fontWeight={400} fontSize={10} opacity={0.85}>
+                  {pct.toFixed(1)}%
+                </tspan>
+              </>
+            )}
+          </text>
+        )}
+      </g>
+    );
+  };
+
+  const TreemapTooltip = ({ active, payload }: any) => {
+    if (!active || !payload?.length) return null;
+    const p = payload[0]?.payload;
+    if (!p) return null;
+    const pct = total > 0 ? (p.size / total) * 100 : 0;
+    return (
+      <div className="rounded-xl border border-border/60 bg-background/95 backdrop-blur shadow-xl p-4 min-w-[220px]">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="inline-block h-2 w-2 rounded-full" style={{ background: colorFor(p.name) }} />
+          <span className="text-sm font-medium">{p.name}</span>
+        </div>
+        <div className="space-y-1 text-xs text-muted-foreground">
+          <div className="flex justify-between gap-4">
+            <span>Total</span>
+            <span className="tabular-nums text-foreground">{fmtCurrency(p.size)}</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Share</span>
+            <span className="tabular-nums text-foreground">{pct.toFixed(1)}%</span>
+          </div>
+          <div className="flex justify-between gap-4">
+            <span>Transactions</span>
+            <span className="tabular-nums text-foreground">{p.count}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <section className="mt-14 pt-10 border-t border-border/60">
+      <div className="mb-6">
+        <h2 className="text-base font-medium">Composition</h2>
+        <p className="text-xs text-muted-foreground mt-1">
+          Spend by category for the selected period
+        </p>
+      </div>
+      <div className="h-[420px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <Treemap
+            data={data}
+            dataKey="size"
+            nameKey="name"
+            stroke="hsl(var(--background))"
+            isAnimationActive={false}
+            content={<TreemapCell />}
+          >
+            <Tooltip content={<TreemapTooltip />} />
+          </Treemap>
+        </ResponsiveContainer>
+      </div>
+    </section>
+  );
+}
 
 function MonthBreakdown({
   month,
