@@ -21,6 +21,11 @@ const Categories = () => {
   const [pattern, setPattern] = useState("");
   const [matchType, setMatchType] = useState<"contains"|"equals"|"regex">("contains");
 
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRulePattern, setEditRulePattern] = useState("");
+  const [editRuleMatch, setEditRuleMatch] = useState<"contains"|"equals"|"regex">("contains");
+  const [editRuleCat, setEditRuleCat] = useState<string>("");
+
   const { data: categories = [] } = useQuery({
     queryKey: ["categories", "full"],
     queryFn: async () => (await supabase.from("categories").select("*").order("name")).data ?? [],
@@ -75,6 +80,32 @@ const Categories = () => {
   }
   async function delRule(id: string) {
     await supabase.from("category_rules").delete().eq("id", id);
+    qc.invalidateQueries({ queryKey: ["rules"] });
+  }
+  function startEditRule(r: any) {
+    setEditingRuleId(r.id);
+    setEditRulePattern(r.pattern ?? "");
+    setEditRuleMatch(r.match_type ?? "contains");
+    setEditRuleCat(r.category_id ?? "");
+  }
+  function cancelEditRule() {
+    setEditingRuleId(null);
+    setEditRulePattern("");
+    setEditRuleMatch("contains");
+    setEditRuleCat("");
+  }
+  async function saveEditRule(id: string) {
+    if (!editRulePattern.trim() || !editRuleCat) return;
+    const { error } = await supabase
+      .from("category_rules")
+      .update({
+        pattern: editRulePattern.trim(),
+        match_type: editRuleMatch,
+        category_id: editRuleCat,
+      })
+      .eq("id", id);
+    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    cancelEditRule();
     qc.invalidateQueries({ queryKey: ["rules"] });
   }
 
@@ -171,15 +202,60 @@ const Categories = () => {
             </div>
             <div className="divide-y border rounded-md max-h-96 overflow-auto">
               {(rules as any[]).map(r => (
-                <div key={r.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    <Badge variant="outline" className="text-[10px]">{r.source}</Badge>
-                    <span className="font-mono">{r.pattern}</span>
-                    <span className="text-muted-foreground">→ {r.categories?.name}</span>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => delRule(r.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div key={r.id} className="flex items-center justify-between px-3 py-2 text-sm gap-2">
+                  {editingRuleId === r.id ? (
+                    <>
+                      <div className="flex gap-2 flex-1 min-w-0">
+                        <Select value={editRuleMatch} onValueChange={(v: any) => setEditRuleMatch(v)}>
+                          <SelectTrigger className="h-8 w-[110px] shrink-0"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="contains">contains</SelectItem>
+                            <SelectItem value="equals">equals</SelectItem>
+                            <SelectItem value="regex">regex</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        <Input
+                          value={editRulePattern}
+                          onChange={(e) => setEditRulePattern(e.target.value)}
+                          placeholder="Pattern"
+                          className="h-8 font-mono"
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEditRule(r.id); if (e.key === "Escape") cancelEditRule(); }}
+                          autoFocus
+                        />
+                        <Select value={editRuleCat} onValueChange={setEditRuleCat}>
+                          <SelectTrigger className="h-8 w-[140px] shrink-0"><SelectValue placeholder="Category" /></SelectTrigger>
+                          <SelectContent>
+                            {(categories as any[]).map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" onClick={() => saveEditRule(r.id)} title="Save">
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={cancelEditRule} title="Cancel">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <Badge variant="outline" className="text-[10px]">{r.source}</Badge>
+                        <Badge variant="secondary" className="text-[10px]">{r.match_type}</Badge>
+                        <span className="font-mono truncate">{r.pattern}</span>
+                        <span className="text-muted-foreground truncate">→ {r.categories?.name}</span>
+                      </div>
+                      <div className="flex gap-1 shrink-0">
+                        <Button size="sm" variant="ghost" onClick={() => startEditRule(r)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => delRule(r.id)} title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
