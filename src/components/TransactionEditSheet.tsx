@@ -182,7 +182,7 @@ export function TransactionEditSheet({ txnId, onClose, onSaved }: Props) {
                   meta={(txn.treatment_meta ?? {}) as TreatmentMeta}
                   amount={Number(txn.amount)}
                   date={txn.date}
-                  onSave={(treatment, meta) => patch({ treatment, treatment_meta: meta })}
+                  onSave={(treatment, meta) => { patch({ treatment, treatment_meta: meta }); }}
                 />
               </div>
 
