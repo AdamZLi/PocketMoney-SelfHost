@@ -1,67 +1,35 @@
-## Goal
+## What's broken
 
-Reduce the "AI scan & review" dialog to a near-one-click experience. Most users should see one meaningful choice — **which month** — with clear signal about how much work is left in each.
+The month dropdown in **AI scan & review** is built from the `txns` query (line 1212), but `txns`:
 
-## New dialog layout
+1. Is **capped at 500 rows** (`.limit(500)` at line 443), and
+2. Is **filtered by the user's current page filters** (search, account, category, dateFrom/dateTo, etc.).
 
+So `allMonthOpts` only contains months found in those 500 currently-loaded rows. In the screenshot that's exactly 6 months (Dec 2025 → May 2026), which means `monthOpts.length === allMonthOpts.length` and `hiddenCount === 0` — so the "Show N more months" link is correctly hidden, but for the wrong reason: the older months were never available to count in the first place.
+
+## Fix
+
+There's already a query that has the right data: `monthSummary` (lines 472–501). It paginates through **all** transactions (bypassing the 1000-row cap), and returns `{ month, total, reviewed }` per `YYYY-MM` for the entire dataset, independent of page filters.
+
+In the configure block, replace the `txns`-derived month stats with `monthSummary`:
+
+```ts
+const allMonthOpts = monthSummary.map(s => ({
+  ym: s.month,
+  total: s.total,
+  unreviewed: s.total - s.reviewed,
+}));
+// (already sorted desc by month in the query)
+const monthOpts = scanShowAllMonths ? allMonthOpts : allMonthOpts.slice(0, 6);
+const hiddenCount = allMonthOpts.length - monthOpts.length;
 ```
-┌───────────────────────────────────────────┐
-│  AI scan & review                      ✕  │
-│  Pick a month. We'll review every         │
-│  transaction you haven't checked yet.     │
-│                                           │
-│  Month                                    │
-│  ┌─────────────────────────────────────┐  │
-│  │ March 2026  · 42 left (88%)      ▾ │  │
-│  └─────────────────────────────────────┘  │
-│                                           │
-│  ▸ Advanced filters                       │
-│                                           │
-│                                           │
-│            [ Cancel ]  [ ✦ Preview ]      │
-└───────────────────────────────────────────┘
-```
 
-### Month dropdown (the one decision)
+This makes the dropdown show every month that exists in the database, the unreviewed counts match what the user sees on the Review page, and "Show N more months" appears whenever there are more than 6 months of history.
 
-Each option shows the month plus how much is unreviewed, sorted by most-unreviewed first so the user's likely target is at the top:
+Also apply the same source to `resetScanDialog`'s default-month logic (which currently scans `txns` to pick the most-unreviewed recent month) so the preselected month is correct on first open.
 
-- `March 2026 · 42 left (88%)`
-- `February 2026 · 6 left (12%)`
-- `January 2026 · All reviewed` (greyed, still selectable)
+### Files to touch
 
-Compute counts client-side from the already-loaded `txns` array (group by `YYYY-MM`, count where `reviewed_at` is null vs total). No new query needed.
+- `src/pages/Transactions.tsx` only — the configure block (~lines 1209–1224) and `resetScanDialog`.
 
-Default selection = the most recent month that still has unreviewed transactions. If none, default to the most recent month overall.
-
-### Removed from the default view
-
-- **Reviewed** dropdown — hard-coded to `unreviewed`. (Keep the state variable; just don't render the control.)
-- **Account** dropdown — moved into Advanced.
-- **Category** dropdown — moved into Advanced.
-
-### Advanced filters (collapsed by default)
-
-A single `<Collapsible>` labelled "Advanced filters" containing the existing Account, Category, and Reviewed selects. Closed on open; opening it doesn't change behaviour, just exposes the controls. When any advanced filter is set to a non-default value, show a small badge next to the trigger (e.g. `Advanced filters · 2`) so users don't forget hidden state.
-
-### Result: clicks to launch a scan
-
-Before: open dialog → (skip 3 selects most users don't touch) → pick month → Preview = **2 clicks minimum, often 5**.
-After: open dialog → Preview = **1 click** (or 2 if changing month).
-
-## Technical notes
-
-Files: `src/pages/Transactions.tsx` only — pure presentation change in the `scanStage === "configure"` block (lines ~1147–1227).
-
-- Build a `monthStats: { ym, total, unreviewed }[]` from `txns` once inside the IIFE.
-- Replace `monthOpts.map(...)` with stat-aware items; format label as `${monthLabel(ym)} · ${unreviewed} left (${pct}%)` or `· All reviewed` when `unreviewed === 0`.
-- Sort months by `unreviewed` desc, then date desc.
-- On dialog open (`resetScanDialog`), set `scanMonth` to the first month with `unreviewed > 0`, and force `scanReviewed = "unreviewed"`.
-- Wrap Account / Category / Reviewed selects in `Collapsible` from `@/components/ui/collapsible` (already in the project). Trigger row uses a chevron + "Advanced filters" + optional count badge.
-- No backend / edge-function / data-model changes. `buildScanPreview` and downstream logic untouched.
-
-## Out of scope
-
-- Changing what "unreviewed" means or how rules are applied.
-- Visual redesign of the preview/diff stage.
-- Any change to the edge function or DB schema.
+No backend, query, or data-model changes.
