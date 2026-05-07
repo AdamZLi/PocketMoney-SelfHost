@@ -357,7 +357,14 @@ const Review = () => {
                     <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="flex-1 truncate">
-                        {t.name}
+                        <Link
+                          to={`/transactions?edit=${t.id}`}
+                          className="hover:underline hover:text-primary inline-flex items-center gap-1"
+                          title="Open transaction"
+                        >
+                          {t.name}
+                          <ExternalLink className="h-3 w-3 opacity-50" />
+                        </Link>
                         {(t as any).partLabel && (
                           <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
                         )}
