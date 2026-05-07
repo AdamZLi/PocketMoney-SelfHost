@@ -99,6 +99,41 @@ const Review = () => {
     },
   });
 
+  // Settled splits (reimbursement_status = 'settled') — both whole-txn and split parts.
+  const { data: settled = [] } = useQuery({
+    queryKey: ["review", "reimbursable_settled"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("transactions")
+        .select("id,date,name,amount,treatment,treatment_meta")
+        .in("treatment", ["reimbursable", "split"])
+        .order("date", { ascending: false })
+        .limit(1000);
+      if (error) throw error;
+      const out: (Txn & { partIndex?: number; partLabel?: string; partAmount?: number })[] = [];
+      for (const row of (data ?? []) as Txn[]) {
+        if (row.treatment === "reimbursable") {
+          if ((row.treatment_meta?.reimbursement_status) === "settled") out.push(row);
+        } else if (row.treatment === "split") {
+          const parts = row.treatment_meta?.parts ?? [];
+          parts.forEach((p, i) => {
+            if (p.treatment !== "reimbursable") return;
+            if ((p.meta?.reimbursement_status) !== "settled") return;
+            out.push({
+              ...row,
+              treatment_meta: { ...(p.meta ?? {}) },
+              partIndex: i,
+              partLabel: p.label,
+              partAmount: p.amount,
+              amount: p.amount,
+            });
+          });
+        }
+      }
+      return out;
+    },
+  });
+
   const { data: people = [] } = useQuery({
     queryKey: ["people"],
     queryFn: async () => {
