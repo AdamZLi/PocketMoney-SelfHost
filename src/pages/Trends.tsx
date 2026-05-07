@@ -24,7 +24,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
+  Treemap,
 } from "recharts";
+
+type RangeKey = "3" | "6" | "12" | "ytd" | "all";
 
 // Refined, restrained palette — soft jewel tones rather than saturated primaries.
 const PALETTE = [
