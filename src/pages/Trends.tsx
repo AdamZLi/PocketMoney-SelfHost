@@ -1036,7 +1036,7 @@ function CategoryTrends({
         </p>
       ) : (
         <div className="space-y-2">
-          {filtered.map((row) => {
+          {visibleRows.map((row) => {
             const s = stateFor(row.delta, row.baseline);
             const stroke = sparkColor(s);
             const sparkData = (buckets.length > 12 ? row.series.slice(-12) : row.series).map(
