@@ -944,18 +944,11 @@ const Transactions = () => {
     setScanAccountId("all");
     setScanCategoryId("all");
     // Default month = most recent month with unreviewed txns, else most recent
-    const stats = new Map<string, { total: number; unreviewed: number }>();
-    for (const t of (txns as any[])) {
-      if (!t?.date) continue;
-      const ym = String(t.date).slice(0, 7);
-      const s = stats.get(ym) ?? { total: 0, unreviewed: 0 };
-      s.total++;
-      if (!t.reviewed) s.unreviewed++;
-      stats.set(ym, s);
-    }
-    const months = [...stats.entries()].sort(([a], [b]) => (a < b ? 1 : -1));
-    const firstUnreviewed = months.find(([, s]) => s.unreviewed > 0)?.[0];
-    setScanMonth(firstUnreviewed ?? months[0]?.[0] ?? "");
+    const months = (monthSummary as any[])
+      .map(s => ({ ym: s.month, unreviewed: s.total - s.reviewed }))
+      .sort((a, b) => (a.ym < b.ym ? 1 : -1));
+    const firstUnreviewed = months.find(m => m.unreviewed > 0)?.ym;
+    setScanMonth(firstUnreviewed ?? months[0]?.ym ?? "");
     setScanShowAllMonths(false);
   }
 
