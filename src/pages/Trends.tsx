@@ -643,6 +643,13 @@ const Trends = () => {
         )}
       </section>
 
+      <CategoryTreemap
+        rows={rows}
+        buckets={buckets}
+        showRaw={showRaw}
+        categoryOrder={categories}
+      />
+
       <MonthBreakdown
         month={selectedMonth}
         rows={rows}
