@@ -182,7 +182,7 @@ const Review = () => {
   async function applyStatus(
     t: Txn & { partIndex?: number },
     field: "reimbursement_status" | "refund_status",
-    value: "settled" | "received",
+    value: "settled" | "received" | "pending",
   ) {
     if (typeof t.partIndex === "number") {
       const { data: parent } = await supabase
@@ -209,6 +209,15 @@ const Review = () => {
     if (error) toast.error(error.message);
     else {
       toast.success("Marked settled");
+      qc.invalidateQueries({ queryKey: ["review"] });
+    }
+  }
+
+  async function unmarkSettled(t: Txn & { partIndex?: number }) {
+    const { error } = await applyStatus(t, "reimbursement_status", "pending");
+    if (error) toast.error(error.message);
+    else {
+      toast.success("Moved back to pending");
       qc.invalidateQueries({ queryKey: ["review"] });
     }
   }
