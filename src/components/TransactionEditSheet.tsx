@@ -171,7 +171,7 @@ export function TransactionEditSheet({ txnId, onClose, onSaved }: Props) {
                 <CategoryCombobox
                   value={txn.category_id}
                   categories={categories as any}
-                  onChange={(v) => patch({ category_id: v })}
+                  onChange={(v) => { patch({ category_id: v }); }}
                 />
               </div>
 
