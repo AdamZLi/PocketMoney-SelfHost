@@ -102,6 +102,14 @@ const Trends = () => {
       (await supabase.from("categories").select("id,name,parent_category").order("name")).data ?? [],
   });
 
+  const { data: minDateRow } = useQuery({
+    queryKey: ["txn-min-date"],
+    queryFn: async () => {
+      const { data } = await supabase.from("transactions").select("date").order("date", { ascending: true }).limit(1);
+      return data?.[0]?.date as string | undefined;
+    },
+  });
+
   const range = useMemo(() => {
     if (dateFrom || dateTo) {
       const from =
@@ -110,11 +118,20 @@ const Trends = () => {
       const to = dateTo || new Date().toISOString().slice(0, 10);
       return { from, to };
     }
-    const since = new Date();
-    since.setMonth(since.getMonth() - (months - 1));
+    const today = new Date();
+    const to = today.toISOString().slice(0, 10);
+    if (rangeKey === "ytd") {
+      return { from: new Date(today.getFullYear(), 0, 1).toISOString().slice(0, 10), to };
+    }
+    if (rangeKey === "all") {
+      return { from: minDateRow ?? new Date(2000, 0, 1).toISOString().slice(0, 10), to };
+    }
+    const n = Number(rangeKey);
+    const since = new Date(today);
+    since.setMonth(since.getMonth() - (n - 1));
     since.setDate(1);
-    return { from: since.toISOString().slice(0, 10), to: new Date().toISOString().slice(0, 10) };
-  }, [months, dateFrom, dateTo]);
+    return { from: since.toISOString().slice(0, 10), to };
+  }, [rangeKey, dateFrom, dateTo, minDateRow]);
 
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["trends", "monthly", range.from, range.to, accountId, showRaw],
