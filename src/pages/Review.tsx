@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { TreatmentMeta } from "@/lib/treatments";
 import { Check, ExternalLink, Trash2, Undo2, User } from "lucide-react";
-import { Link } from "react-router-dom";
+import { TransactionEditSheet } from "@/components/TransactionEditSheet";
 import { toast } from "sonner";
 
 type Txn = {
@@ -27,6 +27,7 @@ const Review = () => {
   const [tab, setTab] = useState("owed");
   const [personFilter, setPersonFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
 
   // Pending splits (people owe me) — includes both whole-txn reimbursables AND
   // sub-parts of "split" transactions whose part is reimbursable + pending.
@@ -357,14 +358,15 @@ const Review = () => {
                     <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="flex-1 truncate">
-                        <Link
-                          to={`/transactions?edit=${t.id}`}
-                          className="hover:underline hover:text-primary inline-flex items-center gap-1"
+                        <button
+                          type="button"
+                          onClick={() => setEditId(t.id)}
+                          className="hover:underline hover:text-primary inline-flex items-center gap-1 text-left"
                           title="Open transaction"
                         >
                           {t.name}
                           <ExternalLink className="h-3 w-3 opacity-50" />
-                        </Link>
+                        </button>
                         {(t as any).partLabel && (
                           <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
                         )}
@@ -404,10 +406,10 @@ const Review = () => {
                   <div key={t.id} className="flex items-center gap-3 py-2 text-sm">
                     <span className="text-muted-foreground w-24 shrink-0">{fmtDate(t.date)}</span>
                     <span className="flex-1 truncate">
-                      <Link to={`/transactions?edit=${t.id}`} className="hover:underline hover:text-primary inline-flex items-center gap-1" title="Open transaction">
+                      <button type="button" onClick={() => setEditId(t.id)} className="hover:underline hover:text-primary inline-flex items-center gap-1 text-left" title="Open transaction">
                         {t.name}
                         <ExternalLink className="h-3 w-3 opacity-50" />
-                      </Link>
+                      </button>
                     </span>
                     {t.treatment_meta?.expected_refund_date && (
                       <span className="text-xs text-muted-foreground">
@@ -447,10 +449,10 @@ const Review = () => {
                     <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="flex-1 truncate">
-                        <Link to={`/transactions?edit=${t.id}`} className="hover:underline hover:text-primary inline-flex items-center gap-1" title="Open transaction">
+                        <button type="button" onClick={() => setEditId(t.id)} className="hover:underline hover:text-primary inline-flex items-center gap-1 text-left" title="Open transaction">
                           {t.name}
                           <ExternalLink className="h-3 w-3 opacity-50" />
-                        </Link>
+                        </button>
                         {(t as any).partLabel && (
                           <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
                         )}
@@ -517,6 +519,7 @@ const Review = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      <TransactionEditSheet txnId={editId} onClose={() => setEditId(null)} />
     </div>
   );
 };
