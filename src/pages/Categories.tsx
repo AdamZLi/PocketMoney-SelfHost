@@ -21,6 +21,11 @@ const Categories = () => {
   const [pattern, setPattern] = useState("");
   const [matchType, setMatchType] = useState<"contains"|"equals"|"regex">("contains");
 
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editRulePattern, setEditRulePattern] = useState("");
+  const [editRuleMatch, setEditRuleMatch] = useState<"contains"|"equals"|"regex">("contains");
+  const [editRuleCat, setEditRuleCat] = useState<string>("");
+
   const { data: categories = [] } = useQuery({
     queryKey: ["categories", "full"],
     queryFn: async () => (await supabase.from("categories").select("*").order("name")).data ?? [],
