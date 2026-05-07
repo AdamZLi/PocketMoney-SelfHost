@@ -1,35 +1,35 @@
-## What's broken
+## Why the section moves
 
-The month dropdown in **AI scan & review** is built from the `txns` query (line 1212), but `txns`:
+In `src/pages/Review.tsx` the "Owed" tab groups split transactions by person and then sorts the list by total owed amount (descending):
 
-1. Is **capped at 500 rows** (`.limit(500)` at line 443), and
-2. Is **filtered by the user's current page filters** (search, account, category, dateFrom/dateTo, etc.).
+```ts
+return Array.from(map.values()).sort((a, b) => b.total - a.total); // line 163
+```
 
-So `allMonthOpts` only contains months found in those 500 currently-loaded rows. In the screenshot that's exactly 6 months (Dec 2025 → May 2026), which means `monthOpts.length === allMonthOpts.length` and `hiddenCount === 0` — so the "Show N more months" link is correctly hidden, but for the wrong reason: the older months were never available to count in the first place.
+When you mark items in **Unassigned** as settled (or otherwise change them), that group's total drops, so it gets re-sorted to a lower position — which looks like the section "jumped to the bottom."
 
 ## Fix
 
-There's already a query that has the right data: `monthSummary` (lines 472–501). It paginates through **all** transactions (bypassing the 1000-row cap), and returns `{ month, total, reviewed }` per `YYYY-MM` for the entire dataset, independent of page filters.
+Stop re-ordering groups based on a value that mutates as the user works. Pick one stable ordering and stick with it:
 
-In the configure block, replace the `txns`-derived month stats with `monthSummary`:
+1. Sort groups alphabetically by person name (case-insensitive), with `Unassigned` pinned to either the top or the bottom consistently.
+2. Tie-break only on name, never on total.
+
+Concretely, replace the sort on line 163 with:
 
 ```ts
-const allMonthOpts = monthSummary.map(s => ({
-  ym: s.month,
-  total: s.total,
-  unreviewed: s.total - s.reviewed,
-}));
-// (already sorted desc by month in the query)
-const monthOpts = scanShowAllMonths ? allMonthOpts : allMonthOpts.slice(0, 6);
-const hiddenCount = allMonthOpts.length - monthOpts.length;
+return Array.from(map.values()).sort((a, b) => {
+  if (a.person === "Unassigned") return -1; // or 1 to pin to bottom
+  if (b.person === "Unassigned") return 1;
+  return a.person.localeCompare(b.person);
+});
 ```
 
-This makes the dropdown show every month that exists in the database, the unreviewed counts match what the user sees on the Review page, and "Show N more months" appears whenever there are more than 6 months of history.
+The displayed `total` per group still updates live, but the section's position on the page stays put while the user works through it.
 
-Also apply the same source to `resetScanDialog`'s default-month logic (which currently scans `txns` to pick the most-unreviewed recent month) so the preselected month is correct on first open.
+No other tabs (Refunds, Settled, People) have the same problem — only the Owed tab sorts by a mutating value.
 
-### Files to touch
+## Open question
 
-- `src/pages/Transactions.tsx` only — the configure block (~lines 1209–1224) and `resetScanDialog`.
-
-No backend, query, or data-model changes.
+Where should `Unassigned` sit — pinned to the **top** (so it's always the first thing the user triages) or the **bottom** (so named people come first)? I'll default to **top** unless you say otherwise.  
+=> Answer: Unassigned should always sit on the top.
