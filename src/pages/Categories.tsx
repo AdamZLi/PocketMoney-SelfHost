@@ -82,6 +82,32 @@ const Categories = () => {
     await supabase.from("category_rules").delete().eq("id", id);
     qc.invalidateQueries({ queryKey: ["rules"] });
   }
+  function startEditRule(r: any) {
+    setEditingRuleId(r.id);
+    setEditRulePattern(r.pattern ?? "");
+    setEditRuleMatch(r.match_type ?? "contains");
+    setEditRuleCat(r.category_id ?? "");
+  }
+  function cancelEditRule() {
+    setEditingRuleId(null);
+    setEditRulePattern("");
+    setEditRuleMatch("contains");
+    setEditRuleCat("");
+  }
+  async function saveEditRule(id: string) {
+    if (!editRulePattern.trim() || !editRuleCat) return;
+    const { error } = await supabase
+      .from("category_rules")
+      .update({
+        pattern: editRulePattern.trim(),
+        match_type: editRuleMatch,
+        category_id: editRuleCat,
+      })
+      .eq("id", id);
+    if (error) return toast({ title: "Failed", description: error.message, variant: "destructive" });
+    cancelEditRule();
+    qc.invalidateQueries({ queryKey: ["rules"] });
+  }
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-6">
