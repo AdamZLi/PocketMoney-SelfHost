@@ -13,6 +13,9 @@ const Categories = () => {
   const qc = useQueryClient();
   const [name, setName] = useState("");
   const [parent, setParent] = useState("");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editParent, setEditParent] = useState("");
 
   const [ruleCat, setRuleCat] = useState<string>("");
   const [pattern, setPattern] = useState("");
