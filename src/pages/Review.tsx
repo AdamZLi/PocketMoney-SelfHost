@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { TreatmentMeta } from "@/lib/treatments";
-import { Check, Trash2, Undo2, User } from "lucide-react";
+import { Check, ExternalLink, Trash2, Undo2, User } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 type Txn = {
@@ -356,7 +357,14 @@ const Review = () => {
                     <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="flex-1 truncate">
-                        {t.name}
+                        <Link
+                          to={`/transactions?edit=${t.id}`}
+                          className="hover:underline hover:text-primary inline-flex items-center gap-1"
+                          title="Open transaction"
+                        >
+                          {t.name}
+                          <ExternalLink className="h-3 w-3 opacity-50" />
+                        </Link>
                         {(t as any).partLabel && (
                           <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
                         )}
@@ -395,7 +403,12 @@ const Review = () => {
                 {refunds.map((t) => (
                   <div key={t.id} className="flex items-center gap-3 py-2 text-sm">
                     <span className="text-muted-foreground w-24 shrink-0">{fmtDate(t.date)}</span>
-                    <span className="flex-1 truncate">{t.name}</span>
+                    <span className="flex-1 truncate">
+                      <Link to={`/transactions?edit=${t.id}`} className="hover:underline hover:text-primary inline-flex items-center gap-1" title="Open transaction">
+                        {t.name}
+                        <ExternalLink className="h-3 w-3 opacity-50" />
+                      </Link>
+                    </span>
                     {t.treatment_meta?.expected_refund_date && (
                       <span className="text-xs text-muted-foreground">
                         expected {fmtDate(t.treatment_meta.expected_refund_date)}
@@ -434,7 +447,10 @@ const Review = () => {
                     <div key={`${t.id}-${(t as any).partIndex ?? "x"}`} className="flex items-center gap-3 py-2 text-sm">
                       <span className="text-muted-foreground w-20 shrink-0">{fmtDate(t.date)}</span>
                       <span className="flex-1 truncate">
-                        {t.name}
+                        <Link to={`/transactions?edit=${t.id}`} className="hover:underline hover:text-primary inline-flex items-center gap-1" title="Open transaction">
+                          {t.name}
+                          <ExternalLink className="h-3 w-3 opacity-50" />
+                        </Link>
                         {(t as any).partLabel && (
                           <span className="text-muted-foreground text-xs ml-1">· {(t as any).partLabel}</span>
                         )}
