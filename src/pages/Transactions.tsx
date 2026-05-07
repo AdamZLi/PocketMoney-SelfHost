@@ -1260,17 +1260,17 @@ const Transactions = () => {
                             </SelectItem>
                           );
                         })}
-                        {hiddenCount > 0 && (
-                          <button
-                            type="button"
-                            onPointerDown={(e) => { e.preventDefault(); e.stopPropagation(); setScanShowAllMonths(true); }}
-                            className="relative flex w-full cursor-pointer select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-                          >
-                            Show {hiddenCount} more {hiddenCount === 1 ? "month" : "months"}
-                          </button>
-                        )}
                       </SelectContent>
                     </Select>
+                    {hiddenCount > 0 && !scanShowAllMonths && (
+                      <button
+                        type="button"
+                        onClick={() => setScanShowAllMonths(true)}
+                        className="text-xs text-primary hover:underline mt-1"
+                      >
+                        Show {hiddenCount} more {hiddenCount === 1 ? "month" : "months"}
+                      </button>
+                    )}
                   </div>
 
                   <Collapsible>
