@@ -968,11 +968,12 @@ function CategoryTrends({
     return "hsl(var(--muted-foreground) / 0.6)";
   };
 
-  const badgeLabel = (s: State, delta: number | null) => {
+  const badgeLabel = (s: State, delta: number | null, dollarDelta: number) => {
     if (s === "new") return "new";
     if (s === "stable") return "~stable";
     const v = Math.round(delta!);
-    return `${v > 0 ? "+" : ""}${v}% vs avg`;
+    const sign = dollarDelta > 0 ? "+" : "−";
+    return `${v > 0 ? "+" : ""}${v}% · ${sign}${fmtCurrency(Math.abs(dollarDelta))}`;
   };
 
   return (
