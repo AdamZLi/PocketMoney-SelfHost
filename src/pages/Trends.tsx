@@ -927,12 +927,19 @@ function CategoryTrends({
     let arr = items;
     if (filter === "up") arr = arr.filter((x) => x.delta != null && x.delta > 8);
     else if (filter === "down") arr = arr.filter((x) => x.delta != null && x.delta < -8);
+    // Order by total historical spend (categoryOrder is sorted desc by total).
     return [...arr].sort((a, b) => {
-      const av = a.delta == null ? -1 : Math.abs(a.delta);
-      const bv = b.delta == null ? -1 : Math.abs(b.delta);
-      return bv - av;
+      const ai = categoryOrder.indexOf(a.name);
+      const bi = categoryOrder.indexOf(b.name);
+      const an = ai === -1 ? Number.POSITIVE_INFINITY : ai;
+      const bn = bi === -1 ? Number.POSITIVE_INFINITY : bi;
+      return an - bn;
     });
-  }, [items, filter]);
+  }, [items, filter, categoryOrder]);
+
+  const [expanded, setExpanded] = useState(false);
+  const visibleRows = expanded ? filtered : filtered.slice(0, 10);
+  const hiddenCount = Math.max(0, filtered.length - 10);
 
   const baselineCount = compareIdx; // number of months before selected
   const subtitle =
@@ -1029,7 +1036,7 @@ function CategoryTrends({
         </p>
       ) : (
         <div className="space-y-2">
-          {filtered.map((row) => {
+          {visibleRows.map((row) => {
             const s = stateFor(row.delta, row.baseline);
             const stroke = sparkColor(s);
             const sparkData = (buckets.length > 12 ? row.series.slice(-12) : row.series).map(
@@ -1091,6 +1098,14 @@ function CategoryTrends({
               </div>
             );
           })}
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="w-full text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
+            >
+              {expanded ? "Show less" : `Show ${hiddenCount} more`}
+            </button>
+          )}
         </div>
       )}
     </section>
