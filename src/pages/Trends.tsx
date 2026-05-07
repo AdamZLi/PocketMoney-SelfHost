@@ -1098,6 +1098,14 @@ function CategoryTrends({
               </div>
             );
           })}
+          {hiddenCount > 0 && (
+            <button
+              onClick={() => setExpanded((v) => !v)}
+              className="w-full text-xs text-muted-foreground hover:text-foreground py-2 transition-colors"
+            >
+              {expanded ? "Show less" : `Show ${hiddenCount} more`}
+            </button>
+          )}
         </div>
       )}
     </section>
