@@ -57,7 +57,9 @@ export function OwedByCombobox({ value, onChange, placeholder, className }: Prop
     const merged = new Map<string, "saved" | "history">();
     pastNames.forEach((n) => merged.set(n, "history"));
     people.forEach((n) => merged.set(n, "saved")); // saved overrides history label
-    return Array.from(merged, ([name, source]) => ({ name, source }));
+    return Array.from(merged, ([name, source]) => ({ name, source })).filter(
+      (p) => typeof p.name === "string" && p.name.length > 0,
+    );
   }, [people, pastNames]);
 
   const q = value.trim().toLowerCase();
