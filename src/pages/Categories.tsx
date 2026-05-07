@@ -95,14 +95,51 @@ const Categories = () => {
             </div>
             <div className="divide-y border rounded-md">
               {(categories as any[]).map(c => (
-                <div key={c.id} className="flex items-center justify-between px-3 py-2 text-sm">
-                  <div>
-                    <span className="font-medium">{c.name}</span>
-                    {c.parent_category && <span className="text-muted-foreground ml-2">· {c.parent_category}</span>}
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={() => delCategory(c.id)}>
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
+                <div key={c.id} className="flex items-center justify-between px-3 py-2 text-sm gap-2">
+                  {editingId === c.id ? (
+                    <>
+                      <div className="flex gap-2 flex-1">
+                        <Input
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          placeholder="Name"
+                          className="h-8"
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(c.id); if (e.key === "Escape") cancelEdit(); }}
+                          autoFocus
+                        />
+                        <Input
+                          value={editParent}
+                          onChange={(e) => setEditParent(e.target.value)}
+                          placeholder="Parent (optional)"
+                          className="h-8"
+                          onKeyDown={(e) => { if (e.key === "Enter") saveEdit(c.id); if (e.key === "Escape") cancelEdit(); }}
+                        />
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => saveEdit(c.id)} title="Save">
+                          <Check className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={cancelEdit} title="Cancel">
+                          <X className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div>
+                        <span className="font-medium">{c.name}</span>
+                        {c.parent_category && <span className="text-muted-foreground ml-2">· {c.parent_category}</span>}
+                      </div>
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" onClick={() => startEdit(c)} title="Edit">
+                          <Pencil className="h-4 w-4" />
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => delCategory(c.id)} title="Delete">
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ))}
             </div>
