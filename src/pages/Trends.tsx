@@ -973,8 +973,28 @@ function CategoryTrends({
       <div className="flex items-end justify-between gap-4 mb-6 flex-wrap">
         <div>
           <h2 className="text-base font-medium">What's changing</h2>
-          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {compareMonth ? `${monthFull(compareMonth)} ` : ""}{subtitle}
+          </p>
         </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {buckets.length >= 2 && (
+            <Select
+              value={compareMonth ?? ""}
+              onValueChange={(v) => setCompareMonth(v)}
+            >
+              <SelectTrigger className="h-8 w-auto gap-2 text-xs">
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {[...buckets].reverse().map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {monthFull(b)}{b === currentMonthKey ? " (in progress)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         {buckets.length >= 2 && (
           <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
             {([
