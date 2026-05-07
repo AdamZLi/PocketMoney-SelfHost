@@ -284,6 +284,14 @@ const Review = () => {
               </Badge>
             )}
           </TabsTrigger>
+          <TabsTrigger value="settled">
+            Settled
+            {settled.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {settled.length}
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="people">People</TabsTrigger>
         </TabsList>
 
