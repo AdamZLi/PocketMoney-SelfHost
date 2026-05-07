@@ -29,7 +29,9 @@ export function OwedByCombobox({ value, onChange, placeholder, className }: Prop
     queryFn: async () => {
       const { data, error } = await supabase.from("people").select("name").order("name");
       if (error) throw error;
-      return (data ?? []).map((p) => p.name as string);
+      return (data ?? [])
+        .map((p) => p.name)
+        .filter((n): n is string => typeof n === "string" && n.trim().length > 0);
     },
   });
 
