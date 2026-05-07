@@ -80,7 +80,7 @@ const bucketName = (r: Row) =>
   r.categories?.parent_category || r.categories?.name || "Uncategorized";
 
 const Trends = () => {
-  const [months, setMonths] = useState(12);
+  const [rangeKey, setRangeKey] = useState<RangeKey>("12");
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryBucket, setCategoryBucket] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
