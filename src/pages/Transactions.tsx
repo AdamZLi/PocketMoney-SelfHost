@@ -1200,19 +1200,13 @@ const Transactions = () => {
           </button>
 
           {scanStage === "configure" && (() => {
-            // Build month stats: total + unreviewed counts per YYYY-MM
-            const stats = new Map<string, { total: number; unreviewed: number }>();
-            for (const t of (txns as any[])) {
-              if (!t?.date) continue;
-              const ym = String(t.date).slice(0, 7);
-              const s = stats.get(ym) ?? { total: 0, unreviewed: 0 };
-              s.total++;
-              if (!t.reviewed) s.unreviewed++;
-              stats.set(ym, s);
-            }
-            const allMonthOpts = [...stats.entries()]
-              .map(([ym, s]) => ({ ym, ...s }))
-              .sort((a, b) => (a.ym < b.ym ? 1 : -1));
+            // Use full-dataset monthSummary (paginated, unfiltered) so the
+            // dropdown reflects every month in the database.
+            const allMonthOpts = (monthSummary as any[]).map(s => ({
+              ym: s.month,
+              total: s.total,
+              unreviewed: s.total - s.reviewed,
+            }));
             const monthOpts = scanShowAllMonths ? allMonthOpts : allMonthOpts.slice(0, 6);
             const hiddenCount = allMonthOpts.length - monthOpts.length;
             const monthLabel = (ym: string) => {
