@@ -519,6 +519,7 @@ const Review = () => {
           </Card>
         </TabsContent>
       </Tabs>
+      <TransactionEditSheet txnId={editId} onClose={() => setEditId(null)} />
     </div>
   );
 };
