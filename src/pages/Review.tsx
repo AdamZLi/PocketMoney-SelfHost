@@ -9,7 +9,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { fmtCurrency, fmtDate } from "@/lib/format";
 import { TreatmentMeta } from "@/lib/treatments";
-import { Check, Trash2, Undo2, User } from "lucide-react";
+import { Check, ExternalLink, Trash2, Undo2, User } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 
 type Txn = {
