@@ -46,7 +46,8 @@ export function OwedByCombobox({ value, onChange, placeholder, className }: Prop
       if (error) throw error;
       const set = new Set<string>();
       (data ?? []).forEach((t: any) => {
-        const n = (t.treatment_meta?.owed_by as string | undefined)?.trim();
+        const raw = t.treatment_meta?.owed_by;
+        const n = typeof raw === "string" ? raw.trim() : "";
         if (n) set.add(n);
       });
       return Array.from(set).sort((a, b) => a.localeCompare(b));
