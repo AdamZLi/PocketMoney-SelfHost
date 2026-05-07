@@ -269,10 +269,13 @@ const Trends = () => {
     ? [...totalsByMonth.values()].filter((v) => v > 0)
     : chartData.map((r: any) => Number(r[categoryBucket]) || 0).filter((v) => v > 0);
 
+  const rangeLabelMap: Record<RangeKey, string> = {
+    "3": "Last 3 months", "6": "Last 6 months", "12": "Last 12 months", ytd: "Year to date", all: "All time",
+  };
   const dateRangeLabel =
     dateFrom || dateTo
       ? `${dateFrom ? fmtDate(dateFrom) : "…"} → ${dateTo ? fmtDate(dateTo) : "…"}`
-      : `Last ${months} months`;
+      : rangeLabelMap[rangeKey];
 
   const activeFilters =
     (accountId !== "all" ? 1 : 0) +
