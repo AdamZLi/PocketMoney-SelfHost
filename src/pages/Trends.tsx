@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { fmtCurrency, fmtDate } from "@/lib/format";
@@ -842,19 +842,36 @@ function CategoryTrends({
 }) {
   const [filter, setFilter] = useState<"all" | "up" | "down">("all");
 
+  // Default compare month = last complete calendar month (previous month).
+  const currentMonthKey = useMemo(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  }, []);
+
+  const defaultCompareMonth = useMemo(() => {
+    if (buckets.length === 0) return null;
+    const complete = buckets.filter((b) => b < currentMonthKey);
+    return (complete.length ? complete[complete.length - 1] : buckets[buckets.length - 1]);
+  }, [buckets, currentMonthKey]);
+
+  const [compareMonth, setCompareMonth] = useState<string | null>(defaultCompareMonth);
+
+  // Reset selection when buckets change (range toggle) and selection no longer valid.
+  useEffect(() => {
+    if (!compareMonth || !buckets.includes(compareMonth)) {
+      setCompareMonth(defaultCompareMonth);
+    }
+  }, [buckets, defaultCompareMonth, compareMonth]);
+
   const colorFor = (name: string) => {
     const i = categoryOrder.indexOf(name);
     return i === -1 ? NEUTRAL : PALETTE[i % PALETTE.length];
   };
 
-  // Use up to 12 most recent buckets for the sparkline window.
-  const sparkBuckets = useMemo(
-    () => (buckets.length > 12 ? buckets.slice(-12) : buckets),
-    [buckets],
-  );
+  const compareIdx = compareMonth ? buckets.indexOf(compareMonth) : -1;
 
   const items = useMemo(() => {
-    if (buckets.length < 2) return [];
+    if (buckets.length < 2 || compareIdx < 1) return [];
     const bucketIdx = new Map(buckets.map((b, i) => [b, i]));
     const seriesByCat = new Map<string, number[]>();
 
@@ -876,7 +893,7 @@ function CategoryTrends({
         if (!isFinite(a) || a <= 0 || r.excluded) continue;
         ensure(cat)[idx] += a;
       } else {
-        for (let i = 0; i < buckets.length; i++) {
+        for (let i = 0; i <= compareIdx; i++) {
           const eff = effectiveMonthlyContribution(
             {
               date: r.date,
@@ -893,7 +910,8 @@ function CategoryTrends({
       }
     }
 
-    const out = [...seriesByCat.entries()].map(([name, series]) => {
+    const out = [...seriesByCat.entries()].map(([name, fullSeries]) => {
+      const series = fullSeries.slice(0, compareIdx + 1);
       const current = series[series.length - 1] ?? 0;
       const prior = series.slice(0, -1);
       const baseline = prior.length ? prior.reduce((a, b) => a + b, 0) / prior.length : 0;
@@ -902,9 +920,8 @@ function CategoryTrends({
       return { name, series, current, baseline, avg, delta };
     });
 
-    // Drop categories with no activity at all.
     return out.filter((x) => x.avg > 0 || x.current > 0);
-  }, [rows, buckets, showRaw]);
+  }, [rows, buckets, showRaw, compareIdx]);
 
   const filtered = useMemo(() => {
     let arr = items;
@@ -917,8 +934,12 @@ function CategoryTrends({
     });
   }, [items, filter]);
 
+  const baselineCount = compareIdx; // number of months before selected
   const subtitle =
-    buckets.length >= 2 ? `vs. your ${buckets.length}-month average` : "Not enough history yet";
+    compareIdx >= 1
+      ? `vs. ${baselineCount}-month average`
+      : "Not enough history yet";
+
 
   type State = "up" | "down" | "stable" | "new";
   const stateFor = (delta: number | null, baseline: number): State => {
@@ -952,8 +973,28 @@ function CategoryTrends({
       <div className="flex items-end justify-between gap-4 mb-6 flex-wrap">
         <div>
           <h2 className="text-base font-medium">What's changing</h2>
-          <p className="text-xs text-muted-foreground mt-1">{subtitle}</p>
+          <p className="text-xs text-muted-foreground mt-1">
+            {compareMonth ? `${monthFull(compareMonth)} ` : ""}{subtitle}
+          </p>
         </div>
+        <div className="flex items-center gap-3 flex-wrap">
+          {buckets.length >= 2 && (
+            <Select
+              value={compareMonth ?? ""}
+              onValueChange={(v) => setCompareMonth(v)}
+            >
+              <SelectTrigger className="h-8 w-auto gap-2 text-xs">
+                <SelectValue placeholder="Select month" />
+              </SelectTrigger>
+              <SelectContent>
+                {[...buckets].reverse().map((b) => (
+                  <SelectItem key={b} value={b}>
+                    {monthFull(b)}{b === currentMonthKey ? " (in progress)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
         {buckets.length >= 2 && (
           <div className="inline-flex items-center rounded-full border border-border/70 bg-muted/30 p-0.5">
             {([
@@ -975,6 +1016,7 @@ function CategoryTrends({
             ))}
           </div>
         )}
+        </div>
       </div>
 
       {isLoading ? (
