@@ -27,6 +27,7 @@ const Review = () => {
   const [tab, setTab] = useState("owed");
   const [personFilter, setPersonFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [editId, setEditId] = useState<string | null>(null);
 
   // Pending splits (people owe me) — includes both whole-txn reimbursables AND
   // sub-parts of "split" transactions whose part is reimbursable + pending.
