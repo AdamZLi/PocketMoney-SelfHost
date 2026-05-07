@@ -1176,10 +1176,27 @@ const Transactions = () => {
 
       {scanOpen && (
         <aside
-          className="fixed top-0 right-0 z-40 h-screen w-full sm:max-w-md border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
+          style={{ width: scanPanelWidth }}
+          className="fixed top-0 right-0 z-40 h-screen max-w-[100vw] border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
           role="dialog"
           aria-label="AI scan and review"
         >
+          <div
+            role="separator"
+            aria-orientation="vertical"
+            title="Drag to resize"
+            onMouseDown={(e) => {
+              e.preventDefault();
+              scanResizingRef.current = true;
+              document.body.style.cursor = "col-resize";
+              document.body.style.userSelect = "none";
+            }}
+            onDoubleClick={() => {
+              setScanPanelWidth(480);
+              localStorage.setItem("ledger.scanPanelWidth", "480");
+            }}
+            className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors z-10"
+          />
           <button
             type="button"
             onClick={() => { if (!scanning) { setScanOpen(false); resetScanDialog(); } }}
