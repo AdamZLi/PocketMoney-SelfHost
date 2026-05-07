@@ -651,6 +651,15 @@ const Trends = () => {
         categoryOrder={categories}
       />
 
+      <CategoryTrends
+        rows={rows}
+        buckets={buckets}
+        showRaw={showRaw}
+        categoryOrder={categories}
+        isLoading={isLoading}
+      />
+
+
       <MonthBreakdown
         month={selectedMonth}
         rows={rows}
