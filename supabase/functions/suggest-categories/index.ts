@@ -1,6 +1,6 @@
 // Edge function: AI-powered expense categorization.
 // Receives a list of merchants and the available categories, returns
-// suggested category_id for each. Uses Lovable AI Gateway with tool
+// suggested category_id for each. Uses Google Gemini with tool
 // calling for structured output. The model is acting as a specialized
 // personal-expense categorization agent.
 
@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY is not configured");
 
     const body = await req.json();
     const merchants: MerchantInput[] = Array.isArray(body?.merchants)
@@ -99,15 +99,15 @@ Categorize these merchants:
 ${merchantList}`;
 
     const aiResp = await fetch(
-      "https://ai.gateway.lovable.dev/v1/chat/completions",
+      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${LOVABLE_API_KEY}`,
+          Authorization: `Bearer ${GOOGLE_AI_API_KEY}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "google/gemini-3-flash-preview",
+          model: "gemini-2.0-flash",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: userPrompt },

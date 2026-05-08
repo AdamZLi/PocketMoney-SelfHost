@@ -1,4 +1,4 @@
-// Edge function: classify uncategorized transactions using Lovable AI tool calling.
+// Edge function: classify uncategorized transactions using Google Gemini tool calling.
 // Input:  { categories: string[], transactions: [{ row, name, amount }] }
 // Output: { results: [{ row, category, confidence }] }
 
@@ -17,17 +17,17 @@ Deno.serve(async (req: Request) => {
         status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    const apiKey = Deno.env.get("LOVABLE_API_KEY");
-    if (!apiKey) throw new Error("LOVABLE_API_KEY missing");
+    const apiKey = Deno.env.get("GOOGLE_AI_API_KEY");
+    if (!apiKey) throw new Error("GOOGLE_AI_API_KEY missing");
 
     const sys = `You categorize personal finance transactions. Pick exactly one category from this list for each transaction. Use "Other" if none fit. Allowed categories: ${categories.join(", ")}.`;
     const user = `Classify these transactions and return confidence 0-1:\n${transactions.map((t: any) => `#${t.row} ${t.name} $${t.amount}`).join("\n")}`;
 
-    const resp = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+    const resp = await fetch("https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model: "gemini-2.0-flash",
         messages: [{ role: "system", content: sys }, { role: "user", content: user }],
         tools: [{
           type: "function",
