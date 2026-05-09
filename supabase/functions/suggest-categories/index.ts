@@ -98,73 +98,86 @@ ${categoryList}
 Categorize these merchants:
 ${merchantList}`;
 
-    const aiResp = await fetch(
-      "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${GOOGLE_AI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "gemini-2.0-flash",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userPrompt },
-          ],
-          tools: [
-            {
-              type: "function",
-              function: {
-                name: "assign_categories",
-                description:
-                  "Return a category assignment for each input merchant.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    suggestions: {
-                      type: "array",
-                      items: {
-                        type: "object",
-                        properties: {
-                          id: {
-                            type: "string",
-                            description: "Merchant id from the input list",
-                          },
-                          category_id: {
-                            type: ["string", "null"],
-                            description:
-                              "Chosen category id, or null if no good match",
-                          },
-                          confidence: {
-                            type: "string",
-                            enum: ["low", "medium", "high"],
-                          },
-                        },
-                        required: ["id", "category_id", "confidence"],
-                        additionalProperties: false,
+    const aiRequestBody = JSON.stringify({
+      model: "gemini-2.0-flash",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "assign_categories",
+            description:
+              "Return a category assignment for each input merchant.",
+            parameters: {
+              type: "object",
+              properties: {
+                suggestions: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    properties: {
+                      id: {
+                        type: "string",
+                        description: "Merchant id from the input list",
+                      },
+                      category_id: {
+                        type: ["string", "null"],
+                        description:
+                          "Chosen category id, or null if no good match",
+                      },
+                      confidence: {
+                        type: "string",
+                        enum: ["low", "medium", "high"],
                       },
                     },
+                    required: ["id", "category_id", "confidence"],
+                    additionalProperties: false,
                   },
-                  required: ["suggestions"],
-                  additionalProperties: false,
                 },
               },
+              required: ["suggestions"],
+              additionalProperties: false,
             },
-          ],
-          tool_choice: {
-            type: "function",
-            function: { name: "assign_categories" },
           },
-        }),
+        },
+      ],
+      tool_choice: {
+        type: "function",
+        function: { name: "assign_categories" },
       },
-    );
+    });
 
-    if (!aiResp.ok) {
-      if (aiResp.status === 429) {
+    // Retry with exponential backoff on 429 (rate limit) responses
+    const MAX_RETRIES = 3;
+    let aiResp: Response | null = null;
+    for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+      aiResp = await fetch(
+        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${GOOGLE_AI_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: aiRequestBody,
+        },
+      );
+
+      if (aiResp.status !== 429 || attempt === MAX_RETRIES) break;
+
+      const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
+      console.log(`Rate limited by Gemini, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      await new Promise((r) => setTimeout(r, backoffMs));
+    }
+
+    if (!aiResp!.ok) {
+      if (aiResp!.status === 429) {
         return new Response(
           JSON.stringify({
-            error: "Rate limited. Please wait a moment and try again.",
+            error: "Rate limited by AI provider after retries. Please wait a moment and try again.",
           }),
           {
             status: 429,
@@ -172,7 +185,7 @@ ${merchantList}`;
           },
         );
       }
-      if (aiResp.status === 402) {
+      if (aiResp!.status === 402) {
         return new Response(
           JSON.stringify({
             error:
@@ -184,8 +197,8 @@ ${merchantList}`;
           },
         );
       }
-      const errText = await aiResp.text();
-      console.error("AI gateway error", aiResp.status, errText);
+      const errText = await aiResp!.text();
+      console.error("AI gateway error", aiResp!.status, errText);
       return new Response(
         JSON.stringify({ error: "AI gateway error" }),
         {
@@ -195,7 +208,7 @@ ${merchantList}`;
       );
     }
 
-    const aiData = await aiResp.json();
+    const aiData = await aiResp!.json();
     const toolCall =
       aiData?.choices?.[0]?.message?.tool_calls?.[0]?.function?.arguments;
     let suggestions: any[] = [];

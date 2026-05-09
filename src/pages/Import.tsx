@@ -35,6 +35,7 @@ type DupGroup = {
   // index in `members` representing the staged row to keep when action === "merge"
   keepIndex: number;
   action: "merge" | "keep_both" | "flag";
+  crossAccount?: boolean;
 };
 
 function dateKey(d: string, offset = 0) {
@@ -58,6 +59,9 @@ const DupGroupRow = ({ group: g, index: gi, stagedById, onSetAction, onSetKeep }
     <div className="flex flex-wrap items-center gap-2 justify-between">
       <div className="text-xs text-muted-foreground">
         {g.members.length} matching transactions
+        {g.crossAccount && (
+          <Badge variant="outline" className="ml-2 text-[10px] border-amber-400 text-amber-700">Cross-account</Badge>
+        )}
       </div>
       <div className="flex gap-1">
         <Button
@@ -214,6 +218,42 @@ const Import = () => {
         result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "keep_both" });
       }
     }
+
+    // Second pass: cross-account dedup (ignores account_id).
+    // Catches the same purchase on different cards (e.g. Target on Amex vs Capital One).
+    const sameAccountRows = new Set<number>();
+    for (const g of result) {
+      for (const m of g.members) {
+        if (m.kind === "staged") sameAccountRows.add(m.row);
+      }
+    }
+
+    const xGroups = new Map<string, DupSource[]>();
+    const xBucketKey = (name: string, amount: number, date: string) =>
+      `${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}|${date}`;
+
+    for (const s of staged) {
+      if (sameAccountRows.has(s._row)) continue;
+      const k = xBucketKey(s.name, s.amount, s.date);
+      if (!xGroups.has(k)) xGroups.set(k, []);
+      xGroups.get(k)!.push({ kind: "staged", row: s._row });
+    }
+    for (const e of (existing ?? []) as any[]) {
+      const k = xBucketKey(e.name, e.amount, e.date);
+      if (xGroups.has(k)) {
+        xGroups.get(k)!.push({ kind: "existing", id: e.id, date: e.date, name: e.name, amount: e.amount });
+      }
+    }
+
+    for (const [k, members] of xGroups) {
+      const stagedCount = members.filter(m => m.kind === "staged").length;
+      const hasMultipleAccounts = members.length >= 2 && stagedCount >= 1;
+      if (hasMultipleAccounts) {
+        const keepIndex = members.findIndex(m => m.kind === "staged");
+        result.push({ key: `x|${k}`, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "flag", crossAccount: true });
+      }
+    }
+
     return result;
   }
 
@@ -270,32 +310,33 @@ const Import = () => {
     setAiBusy(true);
     setProgress({ stage: "AI categorizing", current: 0, total: rowsToClassify.length });
     try {
-      const categoryNames = (categories as any[]).map(c => c.name);
       const CHUNK = 50;
       const next = [...staging];
       let done = 0;
       let totalClassified = 0;
       for (let i = 0; i < rowsToClassify.length; i += CHUNK) {
         const chunk = rowsToClassify.slice(i, i + CHUNK);
-        const { data, error } = await supabase.functions.invoke("categorize-transactions", {
+        const { data, error } = await supabase.functions.invoke("suggest-categories", {
           body: {
-            categories: categoryNames,
-            transactions: chunk.map(r => ({ row: r._row, name: r.name, amount: r.amount })),
+            categories: (categories as any[]).map(c => ({ id: c.id, name: c.name, parent_category: c.parent_category })),
+            merchants: chunk.map(r => ({ id: String(r._row), name: r.name, amount: r.amount })),
           },
         });
-        if (error) throw error;
-        const results: Array<{ row: number; category: string; confidence: number }> = data?.results ?? [];
-        for (const res of results) {
-          const idx = next.findIndex(s => s._row === res.row);
-          if (idx === -1) continue;
-          const cat = (categories as any[]).find(c => c.name.toLowerCase() === res.category?.toLowerCase());
-          if (cat) {
-            next[idx]._category_id = cat.id;
-            next[idx]._categorized_by = "ai";
-            next[idx]._confidence = res.confidence;
-          }
+        if (error) {
+          // supabase.functions.invoke gives a generic message for non-2xx;
+          // the edge function returns a JSON body with a descriptive error.
+          const detail = data?.error ?? error.message;
+          throw new Error(detail);
         }
-        totalClassified += results.length;
+        const suggestions: Array<{ id: string; category_id: string | null; confidence: string }> = data?.suggestions ?? [];
+        for (const s of suggestions) {
+          const idx = next.findIndex(row => String(row._row) === s.id);
+          if (idx === -1 || !s.category_id) continue;
+          next[idx]._category_id = s.category_id;
+          next[idx]._categorized_by = "ai";
+          next[idx]._confidence = s.confidence === "high" ? 0.9 : s.confidence === "medium" ? 0.6 : 0.3;
+        }
+        totalClassified += suggestions.filter(s => s.category_id).length;
         done += chunk.length;
         setProgress({ stage: "AI categorizing", current: done, total: rowsToClassify.length });
         setStaging([...next]);

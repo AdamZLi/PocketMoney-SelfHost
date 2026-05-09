@@ -68,6 +68,10 @@ const PREFIXES: RegExp[] = [
   /^CHECKCARD\s+/i,
   /^RECURRING\s+/i,
   /^ACH\s+/i,
+  /^APLPAY\s+/i,
+  /^APPLE\s*PAY\s+/i,
+  /^GOOGLE\s*PAY\s+/i,
+  /^GPAY\s+/i,
 ];
 
 function titleCase(s: string): string {
