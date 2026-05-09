@@ -12,6 +12,12 @@ dist
 dist-ssr
 *.local
 
+# Data files — never commit bank exports
+*.csv
+
+# Lock files — use npm only
+bun.lockb
+
 # Environment variables — never commit real credentials
 .env
 .env.local
@@ -20,6 +26,7 @@ dist-ssr
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
+!.vscode/mcp.json
 .idea
 .DS_Store
 *.suo
