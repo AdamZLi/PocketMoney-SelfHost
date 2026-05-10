@@ -12,6 +12,7 @@ import { toast } from "@/hooks/use-toast";
 import { ArrowDown, ArrowUp, Trash2, Search, Calendar, X, Sparkles, Loader2, Undo2, CheckCircle2, Flag, Check, CalendarCheck, Pencil, Plus, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { applyRules, type Rule } from "@/lib/categorize";
+import { findDuplicateGroups, dedupDateRange, type DupGroup as ReviewDupGroup, type DedupEntry } from "@/lib/dedup";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
@@ -90,6 +91,14 @@ const Transactions = () => {
   const [excludedFromPreview, setExcludedFromPreview] = useState<Set<string>>(new Set());
   const [bucketsCollapsed, setBucketsCollapsed] = useState<Record<"high" | "medium" | "low", boolean>>({ high: true, medium: false, low: false });
   const [noChangeCollapsed, setNoChangeCollapsed] = useState(true);
+  type ReviewDupAction = "keep_all" | "flag" | "exclude";
+  type ReviewDupGroupState = ReviewDupGroup & {
+    userAction: ReviewDupAction;
+    excludeId?: string; // which member to exclude when action === "exclude"
+    accountNames: Map<string, string>; // id → account name for display
+  };
+  const [dupPreviewGroups, setDupPreviewGroups] = useState<ReviewDupGroupState[]>([]);
+  const [dupSectionCollapsed, setDupSectionCollapsed] = useState(false);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
   const [scanPanelWidth, setScanPanelWidth] = useState<number>(() => {
@@ -679,6 +688,47 @@ const Transactions = () => {
         return;
       }
 
+      // --- Dedup pre-pass: detect duplicates among scanned transactions ---
+      const scannedDates = list.map((t: any) => t.date as string);
+      const [dupMin, dupMax] = dedupDateRange(scannedDates, 1);
+      const scannedIds = new Set(list.map((t: any) => t.id as string));
+      // Fetch nearby DB transactions that aren't in the scanned set (the "other" side)
+      const { data: nearbyRows } = await supabase
+        .from("transactions")
+        .select("id,date,name,amount,account_id")
+        .gte("date", dupMin)
+        .lte("date", dupMax);
+      const nearbyOther = ((nearbyRows ?? []) as any[]).filter((r: any) => !scannedIds.has(r.id));
+
+      const dupCandidates: DedupEntry[] = list.map((t: any) => ({
+        id: t.id, name: t.name, amount: Number(t.amount), date: t.date,
+        account_id: t.account_id ?? null,
+      }));
+      const dupExisting: DedupEntry[] = nearbyOther.map((e: any) => ({
+        id: e.id, name: e.name, amount: Number(e.amount), date: e.date,
+        account_id: e.account_id ?? null,
+      }));
+      const rawDupGroups = findDuplicateGroups(dupCandidates, dupExisting, { dateWindow: 1 });
+
+      // Build account name lookup for display
+      const allAccountIds = new Set<string>();
+      for (const t of list) if (t.account_id) allAccountIds.add(t.account_id);
+      for (const e of nearbyOther) if (e.account_id) allAccountIds.add(e.account_id);
+      const accountNameMap = new Map<string, string>();
+      if (allAccountIds.size > 0) {
+        const { data: acctRows } = await supabase
+          .from("accounts")
+          .select("id,name")
+          .in("id", [...allAccountIds]);
+        for (const a of (acctRows ?? []) as any[]) accountNameMap.set(a.id, a.name);
+      }
+
+      setDupPreviewGroups(rawDupGroups.map(g => ({
+        ...g,
+        userAction: g.crossAccount ? "flag" : "keep_all",
+        accountNames: accountNameMap,
+      })));
+
       const { data: ruleRows } = await supabase
         .from("category_rules")
         .select("id,category_id,match_type,pattern,priority");
@@ -895,6 +945,26 @@ const Transactions = () => {
           ]),
         );
       }
+      // Apply dedup actions
+      for (const g of dupPreviewGroups) {
+        if (g.userAction === "keep_all") continue;
+        if (g.userAction === "flag") {
+          const ids = g.members.map(m => m.id);
+          for (const id of ids) {
+            await supabase.from("transactions")
+              .update({ needs_review: true, review_reason: "Possible duplicate flagged during AI scan" } as any)
+              .eq("id", id);
+          }
+        } else if (g.userAction === "exclude" && g.excludeId) {
+          await supabase.from("transactions")
+            .update({
+              treatment: "excluded",
+              treatment_meta: { reason: "Duplicate detected during AI scan" },
+              excluded: true,
+            } as any)
+            .eq("id", g.excludeId);
+        }
+      }
       setLastApplied(toApply);
       setScanStage("summary");
       qc.invalidateQueries({ queryKey: ["txns"] });
@@ -943,6 +1013,8 @@ const Transactions = () => {
     setScanReviewed("unreviewed");
     setScanAccountId("all");
     setScanCategoryId("all");
+    setDupPreviewGroups([]);
+    setDupSectionCollapsed(false);
     // Default month = most recent month with unreviewed txns, else most recent
     const months = (monthSummary as any[])
       .map(s => ({ ym: s.month, unreviewed: s.total - s.reviewed }))
@@ -1389,9 +1461,101 @@ const Transactions = () => {
                       : `${selectedCount} of ${changeItems.length} change${changeItems.length === 1 ? "" : "s"} selected. All ${scanTotalConsidered} considered transaction${scanTotalConsidered === 1 ? "" : "s"} (${noChangeItems.length} no-change) will be marked as reviewed when you confirm.`}
                   </p>
                 </div>
-                {previewItems.length > 0 && (
+                {(previewItems.length > 0 || dupPreviewGroups.length > 0) && (
                   <ScrollArea className="flex-1 px-6">
                     <div className="space-y-4 pb-4">
+                      {/* Potential duplicates section */}
+                      {dupPreviewGroups.length > 0 && (
+                        <div className="rounded-lg border border-amber-400/30">
+                          <button
+                            type="button"
+                            className="w-full flex items-center gap-2 px-3 py-2 text-left"
+                            onClick={() => setDupSectionCollapsed(prev => !prev)}
+                          >
+                            <span className="h-2 w-2 rounded-full bg-amber-500" />
+                            <span className="text-sm font-medium">Potential duplicates</span>
+                            <span className="text-xs text-muted-foreground">
+                              {dupPreviewGroups.length} group{dupPreviewGroups.length === 1 ? "" : "s"}
+                            </span>
+                            <Badge variant="outline" className="ml-1 text-[10px] uppercase tracking-wide border-amber-400 text-amber-700">
+                              Needs review
+                            </Badge>
+                            <span className="ml-auto text-xs text-muted-foreground">{dupSectionCollapsed ? "Show" : "Hide"}</span>
+                          </button>
+                          {!dupSectionCollapsed && (
+                            <div className="px-3 pb-3 space-y-2">
+                              {dupPreviewGroups.map((g, gi) => {
+                                const txnLookup = (id: string) => {
+                                  const scanned = (txns as any[]).find((t: any) => t.id === id);
+                                  if (scanned) return scanned;
+                                  const member = g.members.find(m => m.kind === "existing" && m.id === id);
+                                  if (member && member.kind === "existing") return member;
+                                  return null;
+                                };
+                                return (
+                                  <div key={g.key} className="rounded-md border bg-background p-3 space-y-2">
+                                    <div className="flex flex-wrap items-center gap-2 justify-between">
+                                      <div className="text-xs text-muted-foreground">
+                                        {g.members.length} matching transactions
+                                        {g.crossAccount && (
+                                          <Badge variant="outline" className="ml-2 text-[10px] border-amber-400 text-amber-700">Cross-account</Badge>
+                                        )}
+                                      </div>
+                                      <div className="flex gap-1">
+                                        <Button size="sm" variant={g.userAction === "keep_all" ? "default" : "outline"} className="h-7 gap-1.5"
+                                          onClick={() => setDupPreviewGroups(prev => prev.map((x, i) => i === gi ? { ...x, userAction: "keep_all" } : x))}>
+                                          <Check className="h-3 w-3" /> Keep all
+                                        </Button>
+                                        <Button size="sm" variant={g.userAction === "flag" ? "default" : "outline"} className="h-7 gap-1.5"
+                                          onClick={() => setDupPreviewGroups(prev => prev.map((x, i) => i === gi ? { ...x, userAction: "flag" } : x))}>
+                                          <Flag className="h-3 w-3" /> Flag
+                                        </Button>
+                                        <Button size="sm" variant={g.userAction === "exclude" ? "default" : "outline"} className="h-7 gap-1.5"
+                                          onClick={() => {
+                                            const firstCandidate = g.members.find(m => m.kind === "candidate");
+                                            setDupPreviewGroups(prev => prev.map((x, i) => i === gi ? { ...x, userAction: "exclude", excludeId: firstCandidate?.id } : x));
+                                          }}>
+                                          <X className="h-3 w-3" /> Exclude one
+                                        </Button>
+                                      </div>
+                                    </div>
+                                    <div className="divide-y">
+                                      {g.members.map((m, mi) => {
+                                        const t = txnLookup(m.id);
+                                        const acctName = t?.account_id ? g.accountNames.get(t.account_id) : null;
+                                        const willExclude = g.userAction === "exclude" && m.id === g.excludeId;
+                                        return (
+                                          <div key={mi} className={`flex items-center gap-3 py-2 text-sm ${willExclude ? "opacity-50 line-through" : ""}`}>
+                                            <div className="w-24 text-xs text-muted-foreground tabular-nums">{fmtDate(t?.date ?? "")}</div>
+                                            <div className="flex-1 truncate">
+                                              {t?.name ?? "Unknown"}
+                                              {acctName && <span className="text-xs text-muted-foreground ml-1">({acctName})</span>}
+                                              <Badge variant="outline" className="ml-2 text-[10px]">
+                                                {m.kind === "candidate" ? "scanned" : "existing"}
+                                              </Badge>
+                                            </div>
+                                            <div className="tabular-nums w-24 text-right">{fmtCurrency(t?.amount ?? 0)}</div>
+                                            {g.userAction === "exclude" && (
+                                              <Button
+                                                size="sm"
+                                                variant={willExclude ? "secondary" : "ghost"}
+                                                className="h-7 text-xs"
+                                                onClick={() => setDupPreviewGroups(prev => prev.map((x, i) => i === gi ? { ...x, excludeId: m.id } : x))}
+                                              >
+                                                {willExclude ? "Excluding" : "Exclude this"}
+                                              </Button>
+                                            )}
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
+                        </div>
+                      )}
                       {buckets.map((b) => {
                         if (b.items.length === 0) return null;
                         const collapsed = bucketsCollapsed[b.key];

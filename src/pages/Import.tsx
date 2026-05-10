@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
 import { applyRules } from "@/lib/categorize";
 import { loadAliases } from "@/lib/cleanMerchant";
+import { findDuplicateGroups, type DedupEntry, type DupGroup as SharedDupGroup } from "@/lib/dedup";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -37,12 +38,6 @@ type DupGroup = {
   action: "merge" | "keep_both" | "flag";
   crossAccount?: boolean;
 };
-
-function dateKey(d: string, offset = 0) {
-  const dt = new Date(d + "T00:00:00Z");
-  dt.setUTCDate(dt.getUTCDate() + offset);
-  return dt.toISOString().slice(0, 10);
-}
 
 type DupGroupRowProps = {
   group: DupGroup;
@@ -179,8 +174,8 @@ const Import = () => {
     return data.id;
   }
 
-  // Detect duplicate groups: same merchant (lowercased) + same amount + EXACT same date.
-  // Compares staged rows against each other AND against existing DB transactions on the same account.
+  // Detect duplicate groups using shared dedup library.
+  // Compares staged rows against each other AND against existing DB transactions.
   async function detectDuplicates(staged: Staged[]) {
     if (staged.length === 0) return [];
     const dates = staged.map(s => s.date).sort();
@@ -193,68 +188,38 @@ const Import = () => {
       .gte("date", min)
       .lte("date", max);
 
-    // Bucket by (account_id, merchant lowered, amount, date) — exact date only.
-    const groups = new Map<string, DupSource[]>();
-    const bucketKey = (acct: string | null, name: string, amount: number, date: string) =>
-      `${acct ?? ""}|${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}|${date}`;
+    // Map staged rows to DedupEntry (using _row as string id)
+    const candidates: DedupEntry[] = staged.map(s => ({
+      id: String(s._row),
+      name: s.name,
+      amount: s.amount,
+      date: s.date,
+      account_id: s._account_id ?? null,
+    }));
 
-    for (const s of staged) {
-      const k = bucketKey(s._account_id ?? null, s.name, s.amount, s.date);
-      if (!groups.has(k)) groups.set(k, []);
-      groups.get(k)!.push({ kind: "staged", row: s._row });
-    }
-    for (const e of (existing ?? []) as any[]) {
-      const k = bucketKey(e.account_id ?? null, e.name, e.amount, e.date);
-      if (groups.has(k)) {
-        groups.get(k)!.push({ kind: "existing", id: e.id, date: e.date, name: e.name, amount: e.amount });
-      }
-    }
+    const existingEntries: DedupEntry[] = ((existing ?? []) as any[]).map(e => ({
+      id: e.id,
+      name: e.name,
+      amount: Number(e.amount),
+      date: e.date,
+      account_id: e.account_id ?? null,
+    }));
 
-    const result: DupGroup[] = [];
-    for (const [k, members] of groups) {
-      const stagedCount = members.filter(m => m.kind === "staged").length;
-      if (members.length >= 2 && stagedCount >= 1) {
-        const keepIndex = members.findIndex(m => m.kind === "staged");
-        result.push({ key: k, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "keep_both" });
-      }
-    }
+    const sharedGroups = findDuplicateGroups(candidates, existingEntries);
 
-    // Second pass: cross-account dedup (ignores account_id).
-    // Catches the same purchase on different cards (e.g. Target on Amex vs Capital One).
-    const sameAccountRows = new Set<number>();
-    for (const g of result) {
-      for (const m of g.members) {
-        if (m.kind === "staged") sameAccountRows.add(m.row);
-      }
-    }
-
-    const xGroups = new Map<string, DupSource[]>();
-    const xBucketKey = (name: string, amount: number, date: string) =>
-      `${name.trim().toLowerCase()}|${Number(amount).toFixed(2)}|${date}`;
-
-    for (const s of staged) {
-      if (sameAccountRows.has(s._row)) continue;
-      const k = xBucketKey(s.name, s.amount, s.date);
-      if (!xGroups.has(k)) xGroups.set(k, []);
-      xGroups.get(k)!.push({ kind: "staged", row: s._row });
-    }
-    for (const e of (existing ?? []) as any[]) {
-      const k = xBucketKey(e.name, e.amount, e.date);
-      if (xGroups.has(k)) {
-        xGroups.get(k)!.push({ kind: "existing", id: e.id, date: e.date, name: e.name, amount: e.amount });
-      }
-    }
-
-    for (const [k, members] of xGroups) {
-      const stagedCount = members.filter(m => m.kind === "staged").length;
-      const hasMultipleAccounts = members.length >= 2 && stagedCount >= 1;
-      if (hasMultipleAccounts) {
-        const keepIndex = members.findIndex(m => m.kind === "staged");
-        result.push({ key: `x|${k}`, members, keepIndex: keepIndex >= 0 ? keepIndex : 0, action: "flag", crossAccount: true });
-      }
-    }
-
-    return result;
+    // Convert shared DupGroup format back to Import's DupGroup format
+    return sharedGroups.map((g): DupGroup => ({
+      key: g.key,
+      members: g.members.map(m => {
+        if (m.kind === "candidate") {
+          return { kind: "staged" as const, row: Number(m.id) };
+        }
+        return { kind: "existing" as const, id: m.id, date: m.date, name: m.name, amount: m.amount };
+      }),
+      keepIndex: g.keepIndex,
+      action: g.action,
+      crossAccount: g.crossAccount,
+    }));
   }
 
   async function handleFile(file: File) {
