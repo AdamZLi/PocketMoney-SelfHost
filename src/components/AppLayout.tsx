@@ -19,7 +19,7 @@ const nav = [
 
 const COLLAPSE_KEY = "ledger.sidebarCollapsed";
 const AUTO_COLLAPSE_THRESHOLD = 1280;
-const EXPANDED_WIDTH = 160;
+const EXPANDED_WIDTH = 200;
 const COLLAPSED_WIDTH = 48;
 
 type SidebarContextType = {
