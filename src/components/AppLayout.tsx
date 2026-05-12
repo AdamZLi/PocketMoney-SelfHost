@@ -109,7 +109,7 @@ export const AppLayout = () => {
             className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 overflow-hidden"
           >
             {/* Header — always renders dot + text; text fades via opacity */}
-            <div className={cn("border-b border-sidebar-border flex items-center py-5", isCollapsed ? "justify-center" : "px-4 gap-2")}>
+            <div className="border-b border-sidebar-border flex items-center px-4 py-5 gap-2">
               <span className="text-sidebar-primary text-lg font-semibold shrink-0">●</span>
               <div className={cn("whitespace-nowrap", isCollapsed && "opacity-0")}>
                 <h1 className="text-lg font-semibold text-sidebar-primary-foreground leading-tight">
@@ -130,8 +130,7 @@ export const AppLayout = () => {
                     aria-label={label}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center h-9 rounded-md text-sm transition-colors whitespace-nowrap",
-                        isCollapsed ? "justify-center" : "px-2 gap-3",
+                        "flex items-center h-9 px-2 gap-3 rounded-md text-sm transition-colors whitespace-nowrap",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
@@ -158,7 +157,7 @@ export const AppLayout = () => {
             </nav>
 
             {/* Footer — always renders chevron + text; text fades via opacity */}
-            <div className={cn("border-t border-sidebar-border py-3", isCollapsed ? "" : "px-2")}>
+            <div className="border-t border-sidebar-border px-2 py-3">
               {isCollapsed ? (
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -166,7 +165,7 @@ export const AppLayout = () => {
                       onClick={() => setIsCollapsed(!isCollapsed)}
                       aria-label="Expand sidebar"
                       aria-expanded={false}
-                      className="flex items-center justify-center h-9 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full"
+                      className="flex items-center h-9 px-2 gap-3 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full whitespace-nowrap"
                     >
                       <ChevronsLeft className="h-4 w-4 shrink-0 rotate-180" />
                     </button>
