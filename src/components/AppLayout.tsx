@@ -112,8 +112,8 @@ export const AppLayout = () => {
             <div className="border-b border-sidebar-border flex items-center px-4 py-5 gap-2">
               <span className="text-sidebar-primary text-lg font-semibold shrink-0">●</span>
               <div className={cn(
-                "min-w-0 inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
-                isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
+                isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
               )}>
                 <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap leading-tight">
                   Ledger
@@ -142,8 +142,8 @@ export const AppLayout = () => {
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className={cn(
-                      "inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                      "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
                     )}>
                       {label}
                     </span>
@@ -176,8 +176,8 @@ export const AppLayout = () => {
                       isCollapsed && "rotate-180"
                     )} />
                     <span className={cn(
-                      "inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                      "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
                     )}>
                       Collapse
                     </span>
