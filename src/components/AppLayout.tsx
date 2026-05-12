@@ -106,15 +106,12 @@ export const AppLayout = () => {
         <div className="h-screen flex bg-background overflow-hidden">
           <aside
             style={{ width: sidebarWidth }}
-            className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
+            className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 overflow-hidden"
           >
             {/* Header — always renders dot + text; text fades via opacity */}
             <div className="border-b border-sidebar-border flex items-center px-4 py-5 gap-2">
               <span className="text-sidebar-primary text-lg font-semibold shrink-0">●</span>
-              <div className={cn(
-                "transition-opacity duration-200 motion-reduce:transition-none whitespace-nowrap",
-                isCollapsed ? "opacity-0" : "opacity-100"
-              )}>
+              <div className={cn("whitespace-nowrap", isCollapsed && "opacity-0")}>
                 <h1 className="text-lg font-semibold text-sidebar-primary-foreground leading-tight">
                   Ledger
                 </h1>
@@ -141,10 +138,7 @@ export const AppLayout = () => {
                     }
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className={cn(
-                      "transition-opacity duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "opacity-0" : "opacity-100"
-                    )}>
+                    <span className={cn(isCollapsed && "opacity-0")}>
                       {label}
                     </span>
                   </NavLink>
