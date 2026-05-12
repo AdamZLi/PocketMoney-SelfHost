@@ -108,21 +108,21 @@ export const AppLayout = () => {
             style={{ width: sidebarWidth }}
             className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
           >
-            {/* Header — always renders dot + text; text fades/collapses */}
+            {/* Header — always renders dot + text; text fades via opacity */}
             <div className="border-b border-sidebar-border flex items-center px-4 py-5 gap-2">
               <span className="text-sidebar-primary text-lg font-semibold shrink-0">●</span>
               <div className={cn(
-                "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
-                isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                "transition-opacity duration-200 motion-reduce:transition-none whitespace-nowrap",
+                isCollapsed ? "opacity-0" : "opacity-100"
               )}>
-                <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap leading-tight">
+                <h1 className="text-lg font-semibold text-sidebar-primary-foreground leading-tight">
                   Ledger
                 </h1>
-                <p className="text-xs text-sidebar-foreground/60 mt-0.5 whitespace-nowrap">Personal Finance · Phase 1</p>
+                <p className="text-xs text-sidebar-foreground/60 mt-0.5">Personal Finance · Phase 1</p>
               </div>
             </div>
 
-            {/* Nav — always renders icon + label; label fades/collapses */}
+            {/* Nav — always renders icon + label; label fades via opacity */}
             <nav className="flex-1 py-4 px-2 space-y-1 overflow-hidden">
               {nav.map(({ to, label, icon: Icon, end }) => {
                 const link = (
@@ -142,8 +142,8 @@ export const AppLayout = () => {
                   >
                     <Icon className="h-4 w-4 shrink-0" />
                     <span className={cn(
-                      "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                      "transition-opacity duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "opacity-0" : "opacity-100"
                     )}>
                       {label}
                     </span>
@@ -161,7 +161,7 @@ export const AppLayout = () => {
               })}
             </nav>
 
-            {/* Footer — always renders chevron + text; text fades/collapses */}
+            {/* Footer — always renders chevron + text; text fades via opacity */}
             <div className="border-t border-sidebar-border px-2 py-3">
               <Tooltip>
                 <TooltipTrigger asChild>
@@ -176,8 +176,8 @@ export const AppLayout = () => {
                       isCollapsed && "rotate-180"
                     )} />
                     <span className={cn(
-                      "min-w-0 overflow-hidden whitespace-nowrap transition-all duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "w-0 opacity-0" : "w-auto opacity-100"
+                      "transition-opacity duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "opacity-0" : "opacity-100"
                     )}>
                       Collapse
                     </span>
