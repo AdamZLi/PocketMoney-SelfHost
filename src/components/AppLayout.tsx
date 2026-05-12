@@ -123,7 +123,7 @@ export const AppLayout = () => {
             </div>
 
             {/* Nav */}
-            <nav className={cn("flex-1 py-4 space-y-1 overflow-y-auto", isCollapsed ? "px-0" : "px-3")}>
+            <nav className={cn("flex-1 py-4 space-y-1", isCollapsed ? "overflow-hidden" : "px-3 overflow-y-auto")}>
               {nav.map(({ to, label, icon: Icon, end }) => {
                 const link = (
                   <NavLink
@@ -134,7 +134,7 @@ export const AppLayout = () => {
                     className={({ isActive }) =>
                       cn(
                         "flex items-center text-sm transition-colors whitespace-nowrap",
-                        isCollapsed ? "justify-center h-9 w-full" : "gap-3 px-3 py-2 rounded-md",
+                        isCollapsed ? "justify-center h-9 mx-auto w-10" : "gap-3 px-3 py-2 rounded-md",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
@@ -159,7 +159,7 @@ export const AppLayout = () => {
             </nav>
 
             {/* Footer with collapse toggle */}
-            <div className={cn("border-t border-sidebar-border", isCollapsed ? "px-0 py-3" : "px-3 py-3")}>
+            <div className={cn("border-t border-sidebar-border", isCollapsed ? "py-3" : "px-3 py-3")}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -168,7 +168,7 @@ export const AppLayout = () => {
                     aria-expanded={!isCollapsed}
                     className={cn(
                       "flex items-center text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors",
-                      isCollapsed ? "justify-center h-9 w-full" : "gap-3 px-3 py-2 rounded-md w-full"
+                      isCollapsed ? "justify-center h-9 mx-auto w-10" : "gap-3 px-3 py-2 rounded-md w-full"
                     )}
                   >
                     {isCollapsed ? (
