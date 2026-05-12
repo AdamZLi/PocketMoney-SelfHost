@@ -150,43 +150,45 @@ export const AppLayout = () => {
                   </NavLink>
                 );
 
-                return (
-                  <Tooltip key={to}>
-                    <TooltipTrigger asChild>{link}</TooltipTrigger>
-                    {isCollapsed && (
+                if (isCollapsed) {
+                  return (
+                    <Tooltip key={to}>
+                      <TooltipTrigger asChild>{link}</TooltipTrigger>
                       <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
-                    )}
-                  </Tooltip>
-                );
+                    </Tooltip>
+                  );
+                }
+                return link;
               })}
             </nav>
 
             {/* Footer — always renders chevron + text; text fades via opacity */}
             <div className="border-t border-sidebar-border px-2 py-3">
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <button
-                    onClick={() => setIsCollapsed(!isCollapsed)}
-                    aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                    aria-expanded={!isCollapsed}
-                    className="flex items-center h-9 px-2 gap-3 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full whitespace-nowrap"
-                  >
-                    <ChevronsLeft className={cn(
-                      "h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
-                      isCollapsed && "rotate-180"
-                    )} />
-                    <span className={cn(
-                      "transition-opacity duration-200 motion-reduce:transition-none",
-                      isCollapsed ? "opacity-0" : "opacity-100"
-                    )}>
-                      Collapse
-                    </span>
-                  </button>
-                </TooltipTrigger>
-                {isCollapsed && (
+              {isCollapsed ? (
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button
+                      onClick={() => setIsCollapsed(!isCollapsed)}
+                      aria-label="Expand sidebar"
+                      aria-expanded={false}
+                      className="flex items-center h-9 px-2 gap-3 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full whitespace-nowrap"
+                    >
+                      <ChevronsLeft className="h-4 w-4 shrink-0 rotate-180" />
+                    </button>
+                  </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8}>Expand sidebar</TooltipContent>
-                )}
-              </Tooltip>
+                </Tooltip>
+              ) : (
+                <button
+                  onClick={() => setIsCollapsed(!isCollapsed)}
+                  aria-label="Collapse sidebar"
+                  aria-expanded={true}
+                  className="flex items-center h-9 px-2 gap-3 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full whitespace-nowrap"
+                >
+                  <ChevronsLeft className="h-4 w-4 shrink-0" />
+                  <span>Collapse</span>
+                </button>
+              )}
             </div>
           </aside>
           <main className="flex-1 overflow-auto h-screen min-w-0">
