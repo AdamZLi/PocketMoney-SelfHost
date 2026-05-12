@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles, BarChart3, Inbox, ChevronsLeft, ChevronsRight } from "lucide-react";
+import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles, BarChart3, Inbox, ChevronsLeft } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recleanAllTransactions } from "@/lib/recleanTransactions";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
@@ -106,27 +106,24 @@ export const AppLayout = () => {
         <div className="h-screen flex bg-background overflow-hidden">
           <aside
             style={{ width: sidebarWidth }}
-            className={cn(
-              "shrink-0 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden",
-              isCollapsed ? "shadow-[1px_0_0_0_hsl(var(--sidebar-border))]" : "border-r border-sidebar-border"
-            )}
+            className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
           >
-            {/* Header */}
-            <div className={cn("border-b border-sidebar-border flex items-center", isCollapsed ? "justify-center py-5" : "px-6 py-5")}>
-              {isCollapsed ? (
-                <span className="text-sidebar-primary text-lg font-semibold">●</span>
-              ) : (
-                <div className="min-w-0">
-                  <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap">
-                    <span className="text-sidebar-primary">●</span> Ledger
-                  </h1>
-                  <p className="text-xs text-sidebar-foreground/60 mt-1 whitespace-nowrap">Personal Finance · Phase 1</p>
-                </div>
-              )}
+            {/* Header — always renders dot + text; text fades/collapses */}
+            <div className="border-b border-sidebar-border flex items-center px-4 py-5 gap-2">
+              <span className="text-sidebar-primary text-lg font-semibold shrink-0">●</span>
+              <div className={cn(
+                "min-w-0 inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
+                isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+              )}>
+                <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap leading-tight">
+                  Ledger
+                </h1>
+                <p className="text-xs text-sidebar-foreground/60 mt-0.5 whitespace-nowrap">Personal Finance · Phase 1</p>
+              </div>
             </div>
 
-            {/* Nav */}
-            <nav className={cn("flex-1 py-4", isCollapsed ? "flex flex-col items-center gap-1 overflow-hidden" : "space-y-1 px-3 overflow-y-auto")}>
+            {/* Nav — always renders icon + label; label fades/collapses */}
+            <nav className="flex-1 py-4 px-2 space-y-1 overflow-hidden">
               {nav.map(({ to, label, icon: Icon, end }) => {
                 const link = (
                   <NavLink
@@ -136,8 +133,7 @@ export const AppLayout = () => {
                     aria-label={label}
                     className={({ isActive }) =>
                       cn(
-                        "flex items-center text-sm transition-colors whitespace-nowrap",
-                        isCollapsed ? "justify-center h-9 w-9 rounded-md" : "gap-3 px-3 py-2 rounded-md",
+                        "flex items-center h-9 px-2 gap-3 rounded-md text-sm transition-colors whitespace-nowrap",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
@@ -145,48 +141,51 @@ export const AppLayout = () => {
                     }
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    {!isCollapsed && <span>{label}</span>}
+                    <span className={cn(
+                      "inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                    )}>
+                      {label}
+                    </span>
                   </NavLink>
                 );
 
-                if (isCollapsed) {
-                  return (
-                    <Tooltip key={to}>
-                      <TooltipTrigger asChild>{link}</TooltipTrigger>
+                return (
+                  <Tooltip key={to}>
+                    <TooltipTrigger asChild>{link}</TooltipTrigger>
+                    {isCollapsed && (
                       <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
-                    </Tooltip>
-                  );
-                }
-                return link;
+                    )}
+                  </Tooltip>
+                );
               })}
             </nav>
 
-            {/* Footer with collapse toggle */}
-            <div className={cn("border-t border-sidebar-border", isCollapsed ? "flex justify-center py-3" : "px-3 py-3")}>
+            {/* Footer — always renders chevron + text; text fades/collapses */}
+            <div className="border-t border-sidebar-border px-2 py-3">
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
                     onClick={() => setIsCollapsed(!isCollapsed)}
                     aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                     aria-expanded={!isCollapsed}
-                    className={cn(
-                      "flex items-center text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors rounded-md",
-                      isCollapsed ? "justify-center h-9 w-9" : "gap-3 px-3 py-2 w-full"
-                    )}
+                    className="flex items-center h-9 px-2 gap-3 rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full whitespace-nowrap"
                   >
-                    {isCollapsed ? (
-                      <ChevronsRight className="h-4 w-4 shrink-0" />
-                    ) : (
-                      <>
-                        <ChevronsLeft className="h-4 w-4 shrink-0" />
-                        <span className="whitespace-nowrap">Collapse</span>
-                      </>
-                    )}
+                    <ChevronsLeft className={cn(
+                      "h-4 w-4 shrink-0 transition-transform duration-200 motion-reduce:transition-none",
+                      isCollapsed && "rotate-180"
+                    )} />
+                    <span className={cn(
+                      "inline-block overflow-hidden transition-all duration-200 motion-reduce:transition-none",
+                      isCollapsed ? "max-w-0 opacity-0" : "max-w-[160px] opacity-100"
+                    )}>
+                      Collapse
+                    </span>
                   </button>
                 </TooltipTrigger>
-                <TooltipContent side="right" sideOffset={8}>
-                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-                </TooltipContent>
+                {isCollapsed && (
+                  <TooltipContent side="right" sideOffset={8}>Expand sidebar</TooltipContent>
+                )}
               </Tooltip>
             </div>
           </aside>
