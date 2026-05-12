@@ -104,46 +104,49 @@ const Dashboard = () => {
   const maxParent = parentList[0]?.[1] ?? 1;
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 xl:p-8 max-w-6xl mx-auto space-y-6">
       <header>
         <p className="text-sm text-muted-foreground">{fmtMonthYear(now)}</p>
         <h1 className="text-3xl font-semibold tracking-tight">Dashboard</h1>
       </header>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="min-w-0">
+          <CardHeader className="pb-2 p-4 xl:p-6 xl:pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
               <TrendingDown className="h-4 w-4" /> Spent this month
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{fmtCurrency(total)}</div>
+          <CardContent className="p-4 pt-0 xl:p-6 xl:pt-0">
+            <div className="text-2xl xl:text-3xl font-semibold">{fmtCurrency(total)}</div>
             <p className="text-xs text-muted-foreground mt-1">{txns.length} transactions</p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="min-w-0">
+          <CardHeader className="pb-2 p-4 xl:p-6 xl:pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
               <Tag className="h-4 w-4" /> Top category
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-semibold">{parentList[0]?.[0] ?? "—"}</div>
+          <CardContent className="p-4 pt-0 xl:p-6 xl:pt-0">
+            <div className="text-2xl font-semibold truncate">{parentList[0]?.[0] ?? "—"}</div>
             <p className="text-xs text-muted-foreground mt-1">
               {parentList[0] ? fmtCurrency(parentList[0][1]) : "No data yet"}
             </p>
           </CardContent>
         </Card>
-        <Card>
-          <CardHeader className="pb-2">
+        <Card className="min-w-0">
+          <CardHeader className="pb-2 p-4 xl:p-6 xl:pb-2">
             <CardTitle className="text-xs font-medium text-muted-foreground flex items-center gap-2">
               <Wallet className="h-4 w-4" /> Categories tracked
             </CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-semibold">{parentList.length}</div>
-            <p className="text-xs text-muted-foreground mt-1">parent groups this month</p>
+          <CardContent className="p-4 pt-0 xl:p-6 xl:pt-0">
+            <div className="text-2xl xl:text-3xl font-semibold">{parentList.length}</div>
+            <p className="text-xs text-muted-foreground mt-1">
+              <span className="hidden xl:inline">parent groups this month</span>
+              <span className="xl:hidden">groups</span>
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -156,9 +159,9 @@ const Dashboard = () => {
           )}
           {parentList.map(([name, val]) => (
             <div key={name}>
-              <div className="flex justify-between text-sm mb-1">
-                <span className="font-medium">{name}</span>
-                <span className="text-muted-foreground">{fmtCurrency(val)}</span>
+              <div className="flex justify-between text-sm mb-1 gap-2">
+                <span className="font-medium truncate max-w-[160px] xl:max-w-[240px]" title={name}>{name}</span>
+                <span className="text-muted-foreground shrink-0">{fmtCurrency(val)}</span>
               </div>
               <div className="h-2 bg-muted rounded-full overflow-hidden">
                 <div
@@ -206,9 +209,10 @@ const Dashboard = () => {
                 if (!days.has(dk)) days.set(dk, []);
                 days.get(dk)!.push(t);
               }
-              const GRID = "grid-cols-[24px_1fr_180px_140px_120px_28px]";
+              const GRID_WIDE = "grid-cols-[24px_1fr_180px_140px_120px_28px]";
+              const GRID_NARROW = "grid-cols-[24px_1fr_140px_100px_28px]";
               return (
-                <div>
+                <div className="@container">
                   {[...days.entries()].map(([dk, rows]) => (
                     <div key={dk}>
                       <div className="px-1 pt-4 pb-2 first:pt-0">
@@ -219,7 +223,7 @@ const Dashboard = () => {
                       {rows.map((t: any) => (
                         <div
                           key={t.id}
-                          className={`group grid ${GRID} gap-4 px-1 py-2.5 border-b border-border/40 items-center hover:bg-muted/20 transition-colors`}
+                          className={`group grid ${GRID_NARROW} @[800px]:${GRID_WIDE} gap-4 px-1 py-2.5 border-b border-border/40 items-center hover:bg-muted/20 transition-colors`}
                         >
                           <Checkbox
                             checked={!!t.reviewed}
@@ -227,25 +231,29 @@ const Dashboard = () => {
                             title="Mark as reviewed"
                           />
                           <div className="min-w-0">
-                            <div className="text-sm font-medium truncate">{t.name}</div>
+                            <div className="text-sm font-medium truncate" title={t.name}>{t.name}</div>
                             {t.accounts?.name && (
                               <div className="text-xs text-muted-foreground mt-0.5 truncate">
                                 {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
                               </div>
                             )}
                           </div>
-                          <CategoryCombobox
-                            value={t.category_id}
-                            categories={categories as any}
-                            onChange={(v) => updateField(t.id, "category_id", t.category_id, v)}
-                          />
-                          <TreatmentPicker
-                            treatment={(t.treatment ?? "normal") as Treatment}
-                            meta={(t.treatment_meta ?? {}) as TreatmentMeta}
-                            amount={Number(t.amount)}
-                            date={t.date}
-                            onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
-                          />
+                          <div className="min-w-0">
+                            <CategoryCombobox
+                              value={t.category_id}
+                              categories={categories as any}
+                              onChange={(v) => updateField(t.id, "category_id", t.category_id, v)}
+                            />
+                          </div>
+                          <div className="hidden @[800px]:block">
+                            <TreatmentPicker
+                              treatment={(t.treatment ?? "normal") as Treatment}
+                              meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                              amount={Number(t.amount)}
+                              date={t.date}
+                              onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                            />
+                          </div>
                           <div className="text-sm font-medium tabular-nums text-right">
                             {fmtCurrency(Number(t.amount))}
                           </div>

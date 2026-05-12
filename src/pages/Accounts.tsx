@@ -39,7 +39,7 @@ const Accounts = () => {
   }
 
   return (
-    <div className="p-8 max-w-5xl mx-auto space-y-6">
+    <div className="p-6 xl:p-8 max-w-5xl mx-auto space-y-6">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Accounts</h1>
         <p className="text-sm text-muted-foreground mt-1">Bank accounts and credit cards. Plaid sync arrives in Phase 1.5.</p>

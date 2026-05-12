@@ -1,19 +1,16 @@
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/hooks/use-toast";
-import { Trash2, Plus, Loader2, Wand2 } from "lucide-react";
+import { Trash2, Plus, Loader2, Wand2, ChevronRight, ArrowRight, Search } from "lucide-react";
+import MatchedRawNamesPanel from "@/components/MatchedRawNamesPanel";
 import {
   AliasRow,
-  compileAliases,
-  cleanMerchant,
-  genericNormalize,
 } from "@/lib/cleanMerchant";
 import { recleanAllTransactions } from "@/lib/recleanTransactions";
 
@@ -25,9 +22,9 @@ const Aliases = () => {
   const [pattern, setPattern] = useState("");
   const [matchType, setMatchType] = useState<MatchType>("contains");
   const [displayName, setDisplayName] = useState("");
-  const [priority, setPriority] = useState<number>(150);
-  const [testInput, setTestInput] = useState("");
   const [applyBusy, setApplyBusy] = useState(false);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const { data: aliases = [] } = useQuery({
     queryKey: ["merchant_aliases"],
@@ -41,15 +38,37 @@ const Aliases = () => {
     },
   });
 
-  const compiled = useMemo(() => compileAliases(aliases as AliasRow[]), [aliases]);
-  const testResult = useMemo(() => (testInput ? cleanMerchant(testInput, compiled) : ""), [testInput, compiled]);
-  const testGeneric = useMemo(() => (testInput ? genericNormalize(testInput) : ""), [testInput]);
+  const filteredAliases = useMemo(() => {
+    if (!search.trim()) return aliases;
+    const lower = search.toLowerCase();
+    return aliases.filter(a =>
+      a.pattern.toLowerCase().includes(lower) ||
+      a.display_name.toLowerCase().includes(lower)
+    );
+  }, [aliases, search]);
 
   async function addAlias() {
     if (!pattern.trim() || !displayName.trim()) {
       toast({ title: "Pattern and display name are required", variant: "destructive" });
       return;
     }
+    const { data: existing } = await supabase
+      .from("merchant_aliases")
+      .select("id,display_name")
+      .eq("pattern", pattern.trim())
+      .eq("match_type", matchType)
+      .maybeSingle();
+
+    if (existing) {
+      toast({
+        title: "Rule already exists",
+        description: `A ${matchType} rule for "${pattern.trim()}" already exists, displaying as "${existing.display_name}". Edit the existing rule instead.`,
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const priority = matchType === "exact" ? 1000 : 100;
     const { error } = await supabase.from("merchant_aliases").insert({
       pattern: pattern.trim(),
       match_type: matchType,
@@ -61,7 +80,7 @@ const Aliases = () => {
       toast({ title: "Failed to add alias", description: error.message, variant: "destructive" });
       return;
     }
-    setPattern(""); setDisplayName(""); setPriority(150); setMatchType("contains");
+    setPattern(""); setDisplayName(""); setMatchType("contains");
     qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
     toast({ title: "Alias added — refreshing transactions…" });
     await applyToExisting(true);
@@ -105,98 +124,130 @@ const Aliases = () => {
   }
 
   return (
-    <div className="p-8 max-w-6xl mx-auto space-y-6">
+    <div className="p-6 xl:p-8 max-w-5xl mx-auto space-y-6">
       <div>
         <h1 className="text-3xl font-bold">Merchant Aliases</h1>
         <p className="text-muted-foreground mt-1">
-          Map raw merchant strings to clean display names. Highest priority match wins; if no alias matches, the generic cleaner is applied.
+          Rules that map raw bank names to clean display names. Click a rule to see which source names matched.
         </p>
       </div>
 
+      {/* Add alias — reads as a sentence */}
       <Card>
-        <CardHeader><CardTitle>Test the cleaner</CardTitle></CardHeader>
-        <CardContent className="space-y-3">
-          <Input placeholder='e.g. "TST* MAMA&apos;S PIZZA #4421 SAN FRANCISCO CA"' value={testInput} onChange={e => setTestInput(e.target.value)} />
-          {testInput && (
-            <div className="flex flex-wrap gap-3 text-sm">
-              <Badge variant="secondary">Raw: {testInput}</Badge>
-              <Badge>Cleaned: {testResult}</Badge>
-              <Badge variant="outline">Generic only: {testGeneric}</Badge>
-            </div>
-          )}
+        <CardContent className="pt-6">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm text-muted-foreground whitespace-nowrap">If source name</span>
+            <Select value={matchType} onValueChange={v => setMatchType(v as MatchType)}>
+              <SelectTrigger className="w-[120px]"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="contains">contains</SelectItem>
+                <SelectItem value="exact">is exactly</SelectItem>
+              </SelectContent>
+            </Select>
+            <Input
+              className="flex-1 min-w-[180px]"
+              placeholder={matchType === "exact" ? "Paste full source name…" : "e.g. WALGREENS"}
+              value={pattern}
+              onChange={e => setPattern(e.target.value)}
+            />
+            <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <span className="text-sm text-muted-foreground whitespace-nowrap">display as</span>
+            <Input
+              className="flex-1 min-w-[150px]"
+              placeholder="e.g. Walgreens"
+              value={displayName}
+              onChange={e => setDisplayName(e.target.value)}
+            />
+            <Button onClick={addAlias} className="shrink-0"><Plus className="h-4 w-4 mr-1" /> Add</Button>
+          </div>
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader><CardTitle>Add alias</CardTitle></CardHeader>
-        <CardContent className="grid grid-cols-1 md:grid-cols-12 gap-3">
-          <Input className="md:col-span-4" placeholder="Pattern (e.g. WALGREENS)" value={pattern} onChange={e => setPattern(e.target.value)} />
-          <Select value={matchType} onValueChange={v => setMatchType(v as MatchType)}>
-            <SelectTrigger className="md:col-span-2"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="contains">contains</SelectItem>
-              <SelectItem value="exact">exact</SelectItem>
-              <SelectItem value="regex">regex</SelectItem>
-            </SelectContent>
-          </Select>
-          <Input className="md:col-span-3" placeholder="Display name (e.g. Walgreens)" value={displayName} onChange={e => setDisplayName(e.target.value)} />
-          <Input className="md:col-span-1" type="number" value={priority} onChange={e => setPriority(Number(e.target.value) || 0)} />
-          <Button className="md:col-span-2" onClick={addAlias}><Plus className="h-4 w-4 mr-1" /> Add</Button>
-        </CardContent>
-      </Card>
-
+      {/* Alias list */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle>All aliases ({aliases.length})</CardTitle>
+          <CardTitle>All rules ({aliases.length})</CardTitle>
           <Button variant="outline" onClick={() => applyToExisting(false)} disabled={applyBusy}>
             {applyBusy ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Wand2 className="h-4 w-4 mr-1" />}
             Apply to existing transactions
           </Button>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Search className="h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search rules…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="max-w-sm"
+            />
+            {search && (
+              <span className="text-sm text-muted-foreground">{filteredAliases.length} of {aliases.length}</span>
+            )}
+          </div>
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Pattern</TableHead>
-                <TableHead>Match</TableHead>
-                <TableHead>Display name</TableHead>
-                <TableHead className="w-24">Priority</TableHead>
-                <TableHead className="w-20">Source</TableHead>
+                <TableHead className="w-8"></TableHead>
+                <TableHead>When source name…</TableHead>
+                <TableHead>Display as</TableHead>
                 <TableHead className="w-12"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {aliases.map(a => (
-                <TableRow key={a.id}>
-                  <TableCell>
-                    <Input defaultValue={a.pattern} onBlur={e => e.target.value !== a.pattern && updateAlias(a.id, { pattern: e.target.value })} />
-                  </TableCell>
-                  <TableCell>
-                    <Select defaultValue={a.match_type} onValueChange={v => updateAlias(a.id, { match_type: v as MatchType })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="contains">contains</SelectItem>
-                        <SelectItem value="exact">exact</SelectItem>
-                        <SelectItem value="regex">regex</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
-                  <TableCell>
-                    <Input defaultValue={a.display_name} onBlur={e => e.target.value !== a.display_name && updateAlias(a.id, { display_name: e.target.value })} />
-                  </TableCell>
-                  <TableCell>
-                    <Input type="number" defaultValue={a.priority} onBlur={e => Number(e.target.value) !== a.priority && updateAlias(a.id, { priority: Number(e.target.value) || 0 })} />
-                  </TableCell>
-                  <TableCell><Badge variant={a.source === "seed" ? "outline" : "secondary"}>{a.source}</Badge></TableCell>
-                  <TableCell>
-                    <Button size="icon" variant="ghost" onClick={() => deleteAlias(a.id)}>
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {aliases.length === 0 && (
-                <TableRow><TableCell colSpan={6} className="text-center text-muted-foreground py-6">No aliases yet.</TableCell></TableRow>
+              {filteredAliases.map(a => {
+                const isExpanded = expandedId === a.id;
+                const matchLabel = a.match_type === "exact" ? "is exactly" : "contains";
+                return (
+                  <Fragment key={a.id}>
+                    <TableRow
+                      className="cursor-pointer"
+                      onClick={(e) => {
+                        const target = e.target as HTMLElement;
+                        if (target.closest("input, button, [role='combobox'], [role='listbox']")) return;
+                        setExpandedId(isExpanded ? null : a.id);
+                      }}
+                    >
+                      <TableCell className="w-8 pr-0">
+                        <ChevronRight className={`h-4 w-4 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-sm text-muted-foreground whitespace-nowrap">{matchLabel}</span>
+                          <Input
+                            defaultValue={a.pattern}
+                            className="font-mono text-sm"
+                            onClick={e => e.stopPropagation()}
+                            onBlur={e => e.target.value !== a.pattern && updateAlias(a.id, { pattern: e.target.value })}
+                          />
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Input
+                          defaultValue={a.display_name}
+                          className="max-w-[250px]"
+                          onClick={e => e.stopPropagation()}
+                          onBlur={e => e.target.value !== a.display_name && updateAlias(a.id, { display_name: e.target.value })}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Button size="icon" variant="ghost" onClick={(e) => { e.stopPropagation(); deleteAlias(a.id); }}>
+                          <Trash2 className="h-4 w-4 text-destructive" />
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {isExpanded && (
+                      <TableRow>
+                        <TableCell colSpan={4} className="p-0 bg-muted/30">
+                          <MatchedRawNamesPanel alias={a} />
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </Fragment>
+                );
+              })}
+              {filteredAliases.length === 0 && (
+                <TableRow><TableCell colSpan={4} className="text-center text-muted-foreground py-6">{search ? "No rules match your search." : "No rules yet. Add one above."}</TableCell></TableRow>
               )}
             </TableBody>
           </Table>

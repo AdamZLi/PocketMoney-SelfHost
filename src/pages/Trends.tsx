@@ -340,7 +340,7 @@ const Trends = () => {
   );
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12">
+    <div className="max-w-6xl mx-auto px-6 xl:px-8 py-12">
       {/* Title + range pills */}
       <header className="flex items-end justify-between gap-6 flex-wrap mb-10">
         <div>

@@ -1,7 +1,7 @@
 // Edge function: AI-powered expense categorization.
 // Receives a list of merchants and the available categories, returns
-// suggested category_id for each. Uses Google Gemini with tool
-// calling for structured output. The model is acting as a specialized
+// suggested category_id for each. Uses OpenRouter with tool calling
+// for structured output. The model is acting as a specialized
 // personal-expense categorization agent.
 
 const corsHeaders = {
@@ -28,8 +28,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const GOOGLE_AI_API_KEY = Deno.env.get("GOOGLE_AI_API_KEY");
-    if (!GOOGLE_AI_API_KEY) throw new Error("GOOGLE_AI_API_KEY is not configured");
+    const OPENROUTER_API_KEY = Deno.env.get("OPENROUTER_API_KEY");
+    if (!OPENROUTER_API_KEY) throw new Error("OPENROUTER_API_KEY is not configured");
 
     const body = await req.json();
     const merchants: MerchantInput[] = Array.isArray(body?.merchants)
@@ -99,7 +99,7 @@ Categorize these merchants:
 ${merchantList}`;
 
     const aiRequestBody = JSON.stringify({
-      model: "gemini-2.0-flash",
+      model: "openrouter/free",
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
@@ -155,11 +155,11 @@ ${merchantList}`;
     let aiResp: Response | null = null;
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
       aiResp = await fetch(
-        "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "https://openrouter.ai/api/v1/chat/completions",
         {
           method: "POST",
           headers: {
-            Authorization: `Bearer ${GOOGLE_AI_API_KEY}`,
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
             "Content-Type": "application/json",
           },
           body: aiRequestBody,
@@ -169,7 +169,7 @@ ${merchantList}`;
       if (aiResp.status !== 429 || attempt === MAX_RETRIES) break;
 
       const backoffMs = 1000 * Math.pow(2, attempt); // 1s, 2s, 4s
-      console.log(`Rate limited by Gemini, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+      console.log(`Rate limited by OpenRouter, retrying in ${backoffMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
       await new Promise((r) => setTimeout(r, backoffMs));
     }
 

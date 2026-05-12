@@ -122,3 +122,12 @@ export function cleanMerchant(raw: string, aliases: CompiledAlias[] = []): strin
   }
   return genericNormalize(s);
 }
+
+/** Returns both the raw merchant string and the cleaned display name. */
+export function cleanMerchantWithRaw(
+  raw: string,
+  aliases: CompiledAlias[] = [],
+): { raw: string; cleaned: string } {
+  const trimmed = String(raw ?? "").trim();
+  return { raw: trimmed, cleaned: cleanMerchant(trimmed, aliases) };
+}

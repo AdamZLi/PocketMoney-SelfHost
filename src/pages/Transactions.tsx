@@ -1,8 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useSidebar } from "@/components/AppLayout";
 import { fmtCurrency, fmtDate } from "@/lib/format";
+import { MerchantNameInput } from "@/components/MerchantNameInput";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -41,6 +43,7 @@ type RuleSuggestion = {
 
 const Transactions = () => {
   const qc = useQueryClient();
+  const { isCollapsed, snapshotAndCollapse, restoreSnapshot } = useSidebar();
   const [search, setSearch] = useState("");
   const [accountId, setAccountId] = useState<string>("all");
   const [categoryId, setCategoryId] = useState<string>("all");
@@ -101,32 +104,18 @@ const Transactions = () => {
   const [dupSectionCollapsed, setDupSectionCollapsed] = useState(false);
   const [lastApplied, setLastApplied] = useState<PreviewItem[] | null>(null);
   const [reverting, setReverting] = useState(false);
-  const [scanPanelWidth, setScanPanelWidth] = useState<number>(() => {
-    if (typeof window === "undefined") return 480;
-    const saved = Number(localStorage.getItem("ledger.scanPanelWidth"));
-    return saved >= 360 && saved <= 1400 ? saved : 480;
-  });
-  const scanResizingRef = useRef(false);
+
+  // Auto-collapse sidebar when scan panel opens if content area would be too narrow
   useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!scanResizingRef.current) return;
-      const w = Math.min(1400, Math.max(360, window.innerWidth - e.clientX));
-      setScanPanelWidth(w);
-    };
-    const onUp = () => {
-      if (!scanResizingRef.current) return;
-      scanResizingRef.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      localStorage.setItem("ledger.scanPanelWidth", String(scanPanelWidth));
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [scanPanelWidth]);
+    if (scanOpen) {
+      const sidebarWidth = isCollapsed ? 48 : 160;
+      const panelWidth = Math.max(320, Math.min(400, window.innerWidth * 0.35));
+      const contentWidth = window.innerWidth - sidebarWidth - panelWidth;
+      if (contentWidth < 500) snapshotAndCollapse();
+    } else {
+      restoreSnapshot();
+    }
+  }, [scanOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Inline merchant rename
   const [renameTarget, setRenameTarget] = useState<{ id: string; oldName: string } | null>(null);
@@ -252,8 +241,33 @@ const Transactions = () => {
       }
       qc.invalidateQueries({ queryKey: ["txns"] });
       toast({ title: "Transaction updated" });
-      // If the name changed, optionally offer the alias prompt as before.
+      // If the name changed, create an exact-match alias from the raw source name
       if (updates.name) {
+        const rawName = detailsRecord?.raw_merchant_name;
+        if (rawName && rawName !== updates.name) {
+          // Auto-create exact-match alias: raw source name → new display name
+          const { data: existing } = await supabase
+            .from("merchant_aliases")
+            .select("id")
+            .eq("pattern", rawName)
+            .eq("match_type", "exact")
+            .maybeSingle();
+          if (existing) {
+            await supabase.from("merchant_aliases")
+              .update({ display_name: updates.name, priority: 1000, source: "user" })
+              .eq("id", existing.id);
+          } else {
+            await supabase.from("merchant_aliases").insert({
+              pattern: rawName,
+              match_type: "exact",
+              display_name: updates.name,
+              priority: 1000,
+              source: "user",
+            });
+          }
+          qc.invalidateQueries({ queryKey: ["merchant_aliases"] });
+        }
+        // Check if other transactions share the old name and offer to update them
         const { count } = await supabase
           .from("transactions")
           .select("id", { count: "exact", head: true })
@@ -378,7 +392,7 @@ const Transactions = () => {
     (async () => {
       const { data } = await supabase
         .from("transactions")
-        .select("id,date,name,amount,note,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,category_id,excluded,accounts(name,mask)")
+        .select("*,accounts(name,mask)")
         .eq("id", editId)
         .maybeSingle();
       if (data) openDetails(data as any);
@@ -447,7 +461,7 @@ const Transactions = () => {
     queryFn: async () => {
       let q = supabase
         .from("transactions")
-        .select("id,date,name,amount,status,excluded,note,category_id,account_id,needs_review,review_reason,reviewed,reviewed_at,treatment,treatment_meta,linked_txn_id,categories(name,color),accounts(name,mask)")
+        .select("*,categories(name,color),accounts(name,mask)")
         .order("date", { ascending: sortDir === "asc" })
         .limit(500);
       if (accountId !== "all") q = q.eq("account_id", accountId);
@@ -1088,7 +1102,7 @@ const Transactions = () => {
     currentMonthSummary.reviewed === currentMonthSummary.total;
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12">
+    <div className="max-w-6xl mx-auto px-6 xl:px-8 py-12">
       {/* Title */}
       <div className="mb-10 flex items-end justify-between gap-4 flex-wrap">
         <div>
@@ -1241,27 +1255,11 @@ const Transactions = () => {
 
       {scanOpen && (
         <aside
-          style={{ width: scanPanelWidth }}
+          style={{ width: "min(400px, 35vw)", minWidth: 320 }}
           className="fixed top-0 right-0 z-40 h-screen max-w-[100vw] border-l bg-background shadow-xl flex flex-col animate-in slide-in-from-right duration-200"
           role="dialog"
           aria-label="AI scan and review"
         >
-          <div
-            role="separator"
-            aria-orientation="vertical"
-            title="Drag to resize"
-            onMouseDown={(e) => {
-              e.preventDefault();
-              scanResizingRef.current = true;
-              document.body.style.cursor = "col-resize";
-              document.body.style.userSelect = "none";
-            }}
-            onDoubleClick={() => {
-              setScanPanelWidth(480);
-              localStorage.setItem("ledger.scanPanelWidth", "480");
-            }}
-            className="absolute left-0 top-0 h-full w-1.5 -translate-x-1/2 cursor-col-resize hover:bg-primary/40 active:bg-primary/60 transition-colors z-10"
-          />
           <button
             type="button"
             onClick={() => { if (!scanning) { setScanOpen(false); resetScanDialog(); } }}
@@ -2007,7 +2005,8 @@ const Transactions = () => {
 
       {/* Table */}
       {(() => {
-        const GRID = "grid-cols-[24px_1fr_180px_140px_120px]";
+        const GRID = "grid-cols-[24px_1fr_180px_120px] @[800px]:grid-cols-[24px_1fr_180px_140px_120px]";
+
         // Group by month then by date.
         const months = new Map<string, { label: string; total: number; days: Map<string, any[]> }>();
         for (const t of txns as any[]) {
@@ -2038,7 +2037,7 @@ const Transactions = () => {
         };
 
         return (
-          <div>
+          <div className="@container">
             <div className={`grid ${GRID} gap-4 px-2 py-3 text-xs text-muted-foreground border-b`}>
               <Checkbox
                 checked={txns.length > 0 && (txns as any[]).every((t: any) => t.reviewed)}
@@ -2058,7 +2057,7 @@ const Transactions = () => {
                 Merchant {sortDir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />}
               </button>
               <span>Category</span>
-              <span>Treatment</span>
+              <span className="hidden @[800px]:block">Treatment</span>
               <span className="text-right">Amount</span>
             </div>
 
@@ -2091,7 +2090,7 @@ const Transactions = () => {
                           />
                           <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium truncate">{t.name}</span>
+                    <span className="text-sm font-medium truncate" title={t.name}>{t.name}</span>
                     {t.status === "pending" && (
                       <span className="text-[10px] uppercase tracking-wider text-muted-foreground">pending</span>
                     )}
@@ -2106,24 +2105,31 @@ const Transactions = () => {
                       <Pencil className="h-3 w-3" />
                     </Button>
                   </div>
+                  {t.raw_merchant_name && t.raw_merchant_name !== t.name && (
+                    <div className="text-xs font-mono text-muted-foreground truncate max-w-[260px]">{t.raw_merchant_name}</div>
+                  )}
                   {t.accounts?.name && (
                     <div className="text-xs text-muted-foreground mt-0.5 truncate">
                       {t.accounts.name}{t.accounts.mask ? ` ····${t.accounts.mask}` : ""}
                     </div>
                   )}
                 </div>
-                <CategoryCombobox
-                  value={t.category_id}
-                  categories={categories as any}
-                  onChange={(v) => handleCategoryChange(t, v)}
-                />
-                <TreatmentPicker
-                  treatment={(t.treatment ?? "normal") as Treatment}
-                  meta={(t.treatment_meta ?? {}) as TreatmentMeta}
-                  amount={Number(t.amount)}
-                  date={t.date}
-                  onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
-                />
+                <div className="truncate">
+                  <CategoryCombobox
+                    value={t.category_id}
+                    categories={categories as any}
+                    onChange={(v) => handleCategoryChange(t, v)}
+                  />
+                </div>
+                <div className="hidden @[800px]:block">
+                  <TreatmentPicker
+                    treatment={(t.treatment ?? "normal") as Treatment}
+                    meta={(t.treatment_meta ?? {}) as TreatmentMeta}
+                    amount={Number(t.amount)}
+                    date={t.date}
+                    onSave={(treatment, meta) => updateTreatment(t.id, treatment, meta)}
+                  />
+                </div>
                 {(() => {
                   const raw = Number(t.amount);
                   const eff = effectiveMonthlyContribution(
@@ -2291,12 +2297,28 @@ const Transactions = () => {
             <div className="flex-1 overflow-y-auto px-6 space-y-5 py-4">
               <div className="space-y-1.5">
                 <Label className="text-xs text-muted-foreground">Merchant name</Label>
-                <Input
+                <MerchantNameInput
                   value={detailsDraft.name}
-                  onChange={(e) => setDetailsDraft((d) => ({ ...d, name: e.target.value }))}
+                  onChange={(v) => setDetailsDraft((d) => ({ ...d, name: v }))}
                 />
                 {detailsOriginalName && detailsOriginalName !== detailsDraft.name && (
                   <div className="text-[11px] text-muted-foreground">Original: {detailsOriginalName}</div>
+                )}
+                {detailsRecord?.raw_merchant_name && detailsRecord.raw_merchant_name !== detailsRecord.name && (
+                  <div className="text-xs text-muted-foreground">
+                    <span className="text-xs text-muted-foreground">Source: </span>
+                    <button
+                      type="button"
+                      className="font-mono cursor-pointer hover:text-foreground transition-colors"
+                      onClick={() => {
+                        navigator.clipboard.writeText(detailsRecord.raw_merchant_name);
+                        toast({ description: "Copied to clipboard" });
+                      }}
+                      title="Click to copy"
+                    >
+                      {detailsRecord.raw_merchant_name}
+                    </button>
+                  </div>
                 )}
               </div>
 

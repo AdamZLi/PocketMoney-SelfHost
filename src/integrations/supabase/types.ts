@@ -369,6 +369,7 @@ export type Database = {
           needs_review: boolean
           note: string | null
           plaid_transaction_id: string | null
+          raw_merchant_name: string | null
           raw_row: Json | null
           recurring: string | null
           review_kind: Database["public"]["Enums"]["review_kind"] | null
@@ -396,6 +397,7 @@ export type Database = {
           needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
+          raw_merchant_name?: string | null
           raw_row?: Json | null
           recurring?: string | null
           review_kind?: Database["public"]["Enums"]["review_kind"] | null
@@ -423,6 +425,7 @@ export type Database = {
           needs_review?: boolean
           note?: string | null
           plaid_transaction_id?: string | null
+          raw_merchant_name?: string | null
           raw_row?: Json | null
           recurring?: string | null
           review_kind?: Database["public"]["Enums"]["review_kind"] | null

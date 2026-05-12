@@ -30,7 +30,7 @@ A personal finance application to track and understand spending, then expand to 
 ### 3.2 Categorization (FR-CAT-*)
 - **FR-CAT-1** Seed taxonomy mirrors the user's sample CSV's parent → child structure plus standard categories.
 - **FR-CAT-2** Precedence: file's category (if present) > user rule > seed rule > AI fallback.
-- **FR-CAT-3** AI fallback uses Lovable AI `google/gemini-3-flash-preview` with tool calling, returning `{category, confidence}` for each uncategorized row.
+- **FR-CAT-3** AI fallback uses OpenRouter `openrouter/free` with tool calling, returning `{category, confidence}` for each uncategorized row.
 - **FR-CAT-4** Rows with confidence < 0.6 are flagged for user review.
 - **FR-CAT-5** "Create rule from merchant" persists a `category_rules` row (source = `user`, priority = 10) when user overrides a category.
 

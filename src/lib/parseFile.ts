@@ -7,6 +7,7 @@ export type RawRow = Record<string, string | number | boolean | null | undefined
 export type ParsedTxn = {
   date: string; // YYYY-MM-DD
   name: string;
+  rawName: string; // original merchant string before alias cleaning
   amount: number;
   status: "pending" | "posted";
   category?: string | null;
@@ -86,6 +87,7 @@ export function normalizeRow(row: RawRow, merchantAliases: CompiledAlias[] = [])
   return {
     date,
     name,
+    rawName,
     amount,
     status: statusRaw === "pending" ? "pending" : "posted",
     category: (pick(row, aliases.category) as string) || null,

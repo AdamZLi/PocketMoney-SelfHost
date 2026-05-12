@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { AliasReassignCombobox } from "@/components/AliasReassignCombobox";
 import { parseFile, ParsedTxn } from "@/lib/parseFile";
 import { applyRules } from "@/lib/categorize";
 import { loadAliases } from "@/lib/cleanMerchant";
@@ -19,11 +20,13 @@ const DUP_GROUP_BATCH_SIZE = 50;
 
 type Staged = ParsedTxn & {
   _row: number;
+  _raw_name: string;
   _category_id: string | null;
   _account_id: string | null;
   _categorized_by: "file" | "rule" | "ai" | "none";
   _confidence?: number;
   _drop?: boolean;
+  _edited?: boolean;
 };
 
 type DupSource =
@@ -138,6 +141,7 @@ const Import = () => {
   const [visibleDupGroups, setVisibleDupGroups] = useState(DUP_GROUP_BATCH_SIZE);
   const [progress, setProgress] = useState<{ stage: string; current: number; total: number; detail?: string } | null>(null);
   const [visibleRows, setVisibleRows] = useState(200);
+  const [editingRow, setEditingRow] = useState<number | null>(null);
 
   const { data: accounts = [] } = useQuery({
     queryKey: ["accounts"],
@@ -150,6 +154,10 @@ const Import = () => {
   const { data: rules = [] } = useQuery({
     queryKey: ["rules"],
     queryFn: async () => (await supabase.from("category_rules").select("id,category_id,match_type,pattern,priority")).data ?? [],
+  });
+  const { data: aliases = [] } = useQuery({
+    queryKey: ["merchant_aliases_combobox"],
+    queryFn: async () => (await supabase.from("merchant_aliases").select("id,display_name")).data ?? [],
   });
 
   async function ensureCategory(name: string | null | undefined, parent?: string | null) {
@@ -244,7 +252,7 @@ const Import = () => {
           const r = applyRules(p.name, rules as any);
           if (r) { cat_id = r; by = "rule"; }
         }
-        staged.push({ ...p, _row: i, _category_id: cat_id, _account_id: account_id, _categorized_by: by });
+        staged.push({ ...p, _row: i, _raw_name: p.rawName, _category_id: cat_id, _account_id: account_id, _categorized_by: by });
         if (i % 10 === 0 || i === parsed.length - 1) {
           setProgress({ stage: "Categorizing rows", current: i + 1, total: parsed.length });
           // Yield to keep UI responsive
@@ -361,6 +369,7 @@ const Import = () => {
         source: "import" as const,
         import_batch_id: batch.id,
         raw_row: r.raw as any,
+        raw_merchant_name: r._raw_name,
         needs_review: dupDirectives.flagRows.has(r._row),
         review_reason: dupDirectives.flagRows.get(r._row) ?? null,
       }));
@@ -395,6 +404,21 @@ const Import = () => {
       }
       const count = totalCount;
       await supabase.from("import_batches").update({ status: "done", imported_rows: count ?? rows.length }).eq("id", batch.id);
+
+      // Create exact-match alias rules for corrected rows
+      const editedRows = rows.filter(r => r._edited && r._raw_name !== r.name);
+      for (const r of editedRows) {
+        const { data: existing } = await supabase.from("merchant_aliases")
+          .select("id").eq("pattern", r._raw_name).eq("match_type", "exact").maybeSingle();
+        if (existing) {
+          await supabase.from("merchant_aliases").update({ display_name: r.name }).eq("id", existing.id);
+        } else {
+          await supabase.from("merchant_aliases").insert({
+            pattern: r._raw_name, match_type: "exact", display_name: r.name, priority: 1000, source: "user",
+          });
+        }
+      }
+
       const flaggedTotal = dupDirectives.flagRows.size + existingFlagIds.length;
       toast({
         title: `Imported ${count ?? rows.length} of ${rows.length}`,
@@ -432,7 +456,7 @@ const Import = () => {
   }, [dupGroups]);
 
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-6 xl:p-8 max-w-7xl mx-auto space-y-6">
       <header>
         <h1 className="text-3xl font-semibold tracking-tight">Import</h1>
         <p className="text-sm text-muted-foreground mt-1">CSV and XLSX supported. PDF support is wired up via the AI parser.</p>
@@ -569,6 +593,7 @@ const Import = () => {
                     <tr>
                       <th className="px-3 py-2 w-24">Date</th>
                       <th className="px-3 py-2">Merchant</th>
+                      <th className="px-3 py-2">Source Name</th>
                       <th className="px-3 py-2">Account</th>
                       <th className="px-3 py-2">Category</th>
                       <th className="px-3 py-2 text-right">Amount</th>
@@ -582,8 +607,16 @@ const Import = () => {
                       return (
                         <tr key={s._row} className={willDrop ? "opacity-40" : ""}>
                           <td className="px-3 py-2 text-muted-foreground">{fmtDate(s.date)}</td>
-                          <td className="px-3 py-2 font-medium">
-                            {s.name}
+                          <td className="px-3 py-2 font-medium relative">
+                            <span
+                              className="cursor-pointer hover:underline"
+                              onClick={() => setEditingRow(s._row)}
+                            >
+                              {s.name}
+                            </span>
+                            {s._edited && (
+                              <Badge variant="outline" className="ml-1.5 text-[10px]">edited</Badge>
+                            )}
                             <Badge variant="outline" className="ml-2 text-[10px]">{s._categorized_by}</Badge>
                             {willFlag && (
                               <Badge variant="outline" className="ml-1.5 text-[10px] border-amber-500/60 text-amber-700">
@@ -592,6 +625,32 @@ const Import = () => {
                             )}
                             {dupDirectives.dropRows.has(s._row) && !s._drop && (
                               <Badge variant="outline" className="ml-1.5 text-[10px]">duplicate</Badge>
+                            )}
+                            {editingRow === s._row && (
+                              <AliasReassignCombobox
+                                aliases={aliases}
+                                currentAlias={s.name}
+                                onSelect={(displayName) => {
+                                  const next = [...staging];
+                                  const i = next.findIndex(x => x._row === s._row);
+                                  next[i] = { ...next[i], name: displayName, _edited: true };
+                                  setStaging(next);
+                                  setEditingRow(null);
+                                }}
+                                onCancel={() => setEditingRow(null)}
+                              />
+                            )}
+                          </td>
+                          <td className="px-3 py-2">
+                            {s._raw_name === s.name ? (
+                              <span className="text-muted-foreground">—</span>
+                            ) : (
+                              <span
+                                className="text-muted-foreground font-mono text-xs truncate block max-w-[60ch]"
+                                title={s._raw_name}
+                              >
+                                {s._raw_name.length > 60 ? s._raw_name.slice(0, 60) + "…" : s._raw_name}
+                              </span>
                             )}
                           </td>
                           <td className="px-3 py-2 text-muted-foreground text-xs">

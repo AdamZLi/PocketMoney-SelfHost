@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, createContext, useContext } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
-import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles, BarChart3, Inbox } from "lucide-react";
+import { LayoutDashboard, Receipt, Upload, Wallet, Tags, Sparkles, BarChart3, Inbox, ChevronsLeft, ChevronsRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { recleanAllTransactions } from "@/lib/recleanTransactions";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 const nav = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
@@ -16,18 +17,69 @@ const nav = [
   { to: "/aliases", label: "Merchant Aliases", icon: Sparkles },
 ];
 
-const SIDEBAR_WIDTH_KEY = "ledger.sidebarWidth";
-const MIN_WIDTH = 160;
-const MAX_WIDTH = 480;
-const DEFAULT_WIDTH = 240;
+const COLLAPSE_KEY = "ledger.sidebarCollapsed";
+const AUTO_COLLAPSE_THRESHOLD = 1280;
+const EXPANDED_WIDTH = 160;
+const COLLAPSED_WIDTH = 48;
+
+type SidebarContextType = {
+  isCollapsed: boolean;
+  setIsCollapsed: (collapsed: boolean) => void;
+  snapshotAndCollapse: () => void;
+  restoreSnapshot: () => void;
+};
+
+export const SidebarContext = createContext<SidebarContextType>({
+  isCollapsed: false,
+  setIsCollapsed: () => {},
+  snapshotAndCollapse: () => {},
+  restoreSnapshot: () => {},
+});
+
+export const useSidebar = () => useContext(SidebarContext);
 
 export const AppLayout = () => {
   const qc = useQueryClient();
-  const [sidebarWidth, setSidebarWidth] = useState<number>(() => {
-    const saved = Number(localStorage.getItem(SIDEBAR_WIDTH_KEY));
-    return saved >= MIN_WIDTH && saved <= MAX_WIDTH ? saved : DEFAULT_WIDTH;
+  const manualPrefRef = useRef<boolean>(false);
+  const snapshotRef = useRef<boolean | null>(null);
+
+  const [isCollapsed, setIsCollapsedRaw] = useState<boolean>(() => {
+    const saved = localStorage.getItem(COLLAPSE_KEY);
+    if (saved !== null) {
+      manualPrefRef.current = true;
+      return saved === "true";
+    }
+    return window.innerWidth < AUTO_COLLAPSE_THRESHOLD;
   });
-  const draggingRef = useRef(false);
+
+  const setIsCollapsed = useCallback((collapsed: boolean) => {
+    manualPrefRef.current = true;
+    localStorage.setItem(COLLAPSE_KEY, String(collapsed));
+    setIsCollapsedRaw(collapsed);
+  }, []);
+
+  // Auto-collapse/expand based on viewport when no manual preference
+  useEffect(() => {
+    const onResize = () => {
+      if (manualPrefRef.current) return;
+      setIsCollapsedRaw(window.innerWidth < AUTO_COLLAPSE_THRESHOLD);
+    };
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  // Snapshot sidebar state (for review panel auto-collapse)
+  const snapshotAndCollapse = useCallback(() => {
+    snapshotRef.current = isCollapsed;
+    setIsCollapsedRaw(true);
+  }, [isCollapsed]);
+
+  const restoreSnapshot = useCallback(() => {
+    if (snapshotRef.current !== null) {
+      setIsCollapsedRaw(snapshotRef.current);
+      snapshotRef.current = null;
+    }
+  }, []);
 
   useEffect(() => {
     const KEY = "ledger.lastReclean";
@@ -39,86 +91,107 @@ export const AppLayout = () => {
       .catch(() => { /* silent */ });
   }, [qc]);
 
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    draggingRef.current = true;
-    document.body.style.cursor = "col-resize";
-    document.body.style.userSelect = "none";
-  }, []);
+  const sidebarWidth = isCollapsed ? COLLAPSED_WIDTH : EXPANDED_WIDTH;
 
-  useEffect(() => {
-    const onMove = (e: MouseEvent) => {
-      if (!draggingRef.current) return;
-      const w = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, e.clientX));
-      setSidebarWidth(w);
-    };
-    const onUp = () => {
-      if (!draggingRef.current) return;
-      draggingRef.current = false;
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      localStorage.setItem(SIDEBAR_WIDTH_KEY, String(sidebarWidth));
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-    };
-  }, [sidebarWidth]);
-
-  const onDoubleClick = useCallback(() => {
-    setSidebarWidth(DEFAULT_WIDTH);
-    localStorage.setItem(SIDEBAR_WIDTH_KEY, String(DEFAULT_WIDTH));
-  }, []);
+  const sidebarCtx: SidebarContextType = {
+    isCollapsed,
+    setIsCollapsed,
+    snapshotAndCollapse,
+    restoreSnapshot,
+  };
 
   return (
-    <div className="h-screen flex bg-background overflow-hidden">
-      <aside
-        style={{ width: sidebarWidth }}
-        className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0"
-      >
-        <div className="px-6 py-5 border-b border-sidebar-border">
-          <h1 className="text-lg font-semibold text-sidebar-primary-foreground">
-            <span className="text-sidebar-primary">●</span> Ledger
-          </h1>
-          <p className="text-xs text-sidebar-foreground/60 mt-1">Personal Finance · Phase 1</p>
+    <SidebarContext.Provider value={sidebarCtx}>
+      <TooltipProvider delayDuration={300}>
+        <div className="h-screen flex bg-background overflow-hidden">
+          <aside
+            style={{ width: sidebarWidth }}
+            className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
+          >
+            {/* Header */}
+            <div className={cn("border-b border-sidebar-border", isCollapsed ? "px-2 py-5" : "px-6 py-5")}>
+              {isCollapsed ? (
+                <span className="text-sidebar-primary text-lg font-semibold block text-center">●</span>
+              ) : (
+                <>
+                  <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap">
+                    <span className="text-sidebar-primary">●</span> Ledger
+                  </h1>
+                  <p className="text-xs text-sidebar-foreground/60 mt-1 whitespace-nowrap">Personal Finance · Phase 1</p>
+                </>
+              )}
+            </div>
+
+            {/* Nav */}
+            <nav className={cn("flex-1 py-4 space-y-1 overflow-y-auto", isCollapsed ? "px-1" : "px-3")}>
+              {nav.map(({ to, label, icon: Icon, end }) => {
+                const link = (
+                  <NavLink
+                    key={to}
+                    to={to}
+                    end={end}
+                    aria-label={label}
+                    className={({ isActive }) =>
+                      cn(
+                        "flex items-center rounded-md text-sm transition-colors whitespace-nowrap",
+                        isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                        isActive
+                          ? "bg-sidebar-accent text-sidebar-primary-foreground"
+                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
+                      )
+                    }
+                  >
+                    <Icon className="h-4 w-4 shrink-0" />
+                    {!isCollapsed && <span>{label}</span>}
+                  </NavLink>
+                );
+
+                if (isCollapsed) {
+                  return (
+                    <Tooltip key={to}>
+                      <TooltipTrigger asChild>{link}</TooltipTrigger>
+                      <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
+                    </Tooltip>
+                  );
+                }
+                return link;
+              })}
+            </nav>
+
+            {/* Footer with collapse toggle */}
+            <div className={cn("border-t border-sidebar-border", isCollapsed ? "px-1 py-3" : "px-3 py-3")}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => setIsCollapsed(!isCollapsed)}
+                    aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                    aria-expanded={!isCollapsed}
+                    className={cn(
+                      "flex items-center rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full",
+                      isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2"
+                    )}
+                  >
+                    {isCollapsed ? (
+                      <ChevronsRight className="h-4 w-4 shrink-0" />
+                    ) : (
+                      <>
+                        <ChevronsLeft className="h-4 w-4 shrink-0" />
+                        <span className="whitespace-nowrap">Collapse</span>
+                      </>
+                    )}
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={8}>
+                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </Tooltip>
+            </div>
+          </aside>
+          <main className="flex-1 overflow-auto h-screen min-w-0">
+            <Outlet />
+          </main>
         </div>
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {nav.map(({ to, label, icon: Icon, end }) => (
-            <NavLink
-              key={to}
-              to={to}
-              end={end}
-              className={({ isActive }) =>
-                cn(
-                  "flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors whitespace-nowrap",
-                  isActive
-                    ? "bg-sidebar-accent text-sidebar-primary-foreground"
-                    : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
-                )
-              }
-            >
-              <Icon className="h-4 w-4 shrink-0" />
-              {label}
-            </NavLink>
-          ))}
-        </nav>
-        <div className="px-6 py-4 text-[11px] text-sidebar-foreground/50 border-t border-sidebar-border">
-          Single-user mode. Auth & bank sync coming in Phase 1.5.
-        </div>
-      </aside>
-      <div
-        role="separator"
-        aria-orientation="vertical"
-        onMouseDown={onMouseDown}
-        onDoubleClick={onDoubleClick}
-        title="Drag to resize · double-click to reset"
-        className="w-1 cursor-col-resize bg-transparent hover:bg-sidebar-border active:bg-sidebar-primary/40 transition-colors"
-      />
-      <main className="flex-1 overflow-auto h-screen min-w-0">
-        <Outlet />
-      </main>
-    </div>
+      </TooltipProvider>
+    </SidebarContext.Provider>
   );
 };

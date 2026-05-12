@@ -264,7 +264,7 @@ const Review = () => {
   }
 
   return (
-    <div className="p-8 space-y-6 max-w-6xl">
+    <div className="p-6 xl:p-8 space-y-6 max-w-6xl">
       <div>
         <h1 className="text-2xl font-semibold">Review</h1>
         <p className="text-sm text-muted-foreground">
