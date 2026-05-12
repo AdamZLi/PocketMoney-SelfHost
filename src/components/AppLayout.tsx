@@ -109,21 +109,21 @@ export const AppLayout = () => {
             className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
           >
             {/* Header */}
-            <div className={cn("border-b border-sidebar-border", isCollapsed ? "px-2 py-5" : "px-6 py-5")}>
+            <div className={cn("border-b border-sidebar-border flex items-center", isCollapsed ? "justify-center px-2 py-5" : "px-6 py-5")}>
               {isCollapsed ? (
-                <span className="text-sidebar-primary text-lg font-semibold block text-center">●</span>
+                <span className="text-sidebar-primary text-lg font-semibold">●</span>
               ) : (
-                <>
+                <div className="min-w-0">
                   <h1 className="text-lg font-semibold text-sidebar-primary-foreground whitespace-nowrap">
                     <span className="text-sidebar-primary">●</span> Ledger
                   </h1>
                   <p className="text-xs text-sidebar-foreground/60 mt-1 whitespace-nowrap">Personal Finance · Phase 1</p>
-                </>
+                </div>
               )}
             </div>
 
             {/* Nav */}
-            <nav className={cn("flex-1 py-4 space-y-1 overflow-y-auto", isCollapsed ? "px-1" : "px-3")}>
+            <nav className={cn("flex-1 py-4 space-y-1 overflow-y-auto", isCollapsed ? "px-1.5" : "px-3")}>
               {nav.map(({ to, label, icon: Icon, end }) => {
                 const link = (
                   <NavLink
@@ -134,7 +134,7 @@ export const AppLayout = () => {
                     className={({ isActive }) =>
                       cn(
                         "flex items-center rounded-md text-sm transition-colors whitespace-nowrap",
-                        isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2",
+                        isCollapsed ? "justify-center w-[44px] h-[36px] mx-auto" : "gap-3 px-3 py-2",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
@@ -159,7 +159,7 @@ export const AppLayout = () => {
             </nav>
 
             {/* Footer with collapse toggle */}
-            <div className={cn("border-t border-sidebar-border", isCollapsed ? "px-1 py-3" : "px-3 py-3")}>
+            <div className={cn("border-t border-sidebar-border", isCollapsed ? "px-1.5 py-3" : "px-3 py-3")}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -167,8 +167,8 @@ export const AppLayout = () => {
                     aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                     aria-expanded={!isCollapsed}
                     className={cn(
-                      "flex items-center rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors w-full",
-                      isCollapsed ? "justify-center px-2 py-2" : "gap-3 px-3 py-2"
+                      "flex items-center rounded-md text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors",
+                      isCollapsed ? "justify-center w-[44px] h-[36px] mx-auto" : "gap-3 px-3 py-2 w-full"
                     )}
                   >
                     {isCollapsed ? (
