@@ -106,7 +106,10 @@ export const AppLayout = () => {
         <div className="h-screen flex bg-background overflow-hidden">
           <aside
             style={{ width: sidebarWidth }}
-            className="shrink-0 bg-sidebar text-sidebar-foreground border-r border-sidebar-border flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden"
+            className={cn(
+              "shrink-0 bg-sidebar text-sidebar-foreground flex flex-col h-screen sticky top-0 transition-[width] duration-200 ease-out motion-reduce:transition-none overflow-hidden",
+              isCollapsed ? "shadow-[1px_0_0_0_hsl(var(--sidebar-border))]" : "border-r border-sidebar-border"
+            )}
           >
             {/* Header */}
             <div className={cn("border-b border-sidebar-border flex items-center", isCollapsed ? "justify-center py-5" : "px-6 py-5")}>
@@ -123,7 +126,7 @@ export const AppLayout = () => {
             </div>
 
             {/* Nav */}
-            <nav className={cn("flex-1 py-4 space-y-1", isCollapsed ? "overflow-hidden" : "px-3 overflow-y-auto")}>
+            <nav className={cn("flex-1 py-4", isCollapsed ? "flex flex-col items-center gap-1 overflow-hidden" : "space-y-1 px-3 overflow-y-auto")}>
               {nav.map(({ to, label, icon: Icon, end }) => {
                 const link = (
                   <NavLink
@@ -134,7 +137,7 @@ export const AppLayout = () => {
                     className={({ isActive }) =>
                       cn(
                         "flex items-center text-sm transition-colors whitespace-nowrap",
-                        isCollapsed ? "justify-center h-9 mx-auto w-10" : "gap-3 px-3 py-2 rounded-md",
+                        isCollapsed ? "justify-center h-9 w-9 rounded-md" : "gap-3 px-3 py-2 rounded-md",
                         isActive
                           ? "bg-sidebar-accent text-sidebar-primary-foreground"
                           : "text-sidebar-foreground/80 hover:bg-sidebar-accent/60 hover:text-sidebar-primary-foreground"
@@ -159,7 +162,7 @@ export const AppLayout = () => {
             </nav>
 
             {/* Footer with collapse toggle */}
-            <div className={cn("border-t border-sidebar-border", isCollapsed ? "py-3" : "px-3 py-3")}>
+            <div className={cn("border-t border-sidebar-border", isCollapsed ? "flex justify-center py-3" : "px-3 py-3")}>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <button
@@ -167,8 +170,8 @@ export const AppLayout = () => {
                     aria-label={isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
                     aria-expanded={!isCollapsed}
                     className={cn(
-                      "flex items-center text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors",
-                      isCollapsed ? "justify-center h-9 mx-auto w-10" : "gap-3 px-3 py-2 rounded-md w-full"
+                      "flex items-center text-sm text-sidebar-foreground/60 hover:text-sidebar-foreground hover:bg-sidebar-accent/60 transition-colors rounded-md",
+                      isCollapsed ? "justify-center h-9 w-9" : "gap-3 px-3 py-2 w-full"
                     )}
                   >
                     {isCollapsed ? (
