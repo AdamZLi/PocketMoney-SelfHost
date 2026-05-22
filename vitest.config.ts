@@ -13,8 +13,8 @@ export default defineConfig(({ mode }) => {
       setupFiles: ["./src/test/setup.ts"],
       include: ["src/**/*.{test,spec}.{ts,tsx}"],
       env: {
-        VITE_SUPABASE_URL: env.VITE_SUPABASE_URL ?? "",
-        VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
+        VITE_SUPABASE_URL: env.VITE_SUPABASE_URL || "https://placeholder.supabase.co",
+        VITE_SUPABASE_PUBLISHABLE_KEY: env.VITE_SUPABASE_PUBLISHABLE_KEY || "placeholder-key",
       },
     },
     resolve: {

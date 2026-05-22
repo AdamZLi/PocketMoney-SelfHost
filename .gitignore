@@ -14,6 +14,7 @@ dist-ssr
 
 # Data files — never commit bank exports
 *.csv
+!src/test/fixtures/*.csv
 
 # Lock files — use npm only
 bun.lockb
