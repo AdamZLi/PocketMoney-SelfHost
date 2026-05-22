@@ -101,7 +101,7 @@ describeIf("suggest-categories (live integration)", () => {
         Math.floor(merchants.length * 0.7),
       );
     },
-    30_000,
+    60_000,
   );
 
   it(
@@ -144,7 +144,7 @@ describeIf("suggest-categories (live integration)", () => {
       expect(r1!.category_id).toBe("cat-groceries");
       expect(r1!.confidence).toBe("high");
     },
-    30_000,
+    60_000,
   );
 
   it(
@@ -186,7 +186,7 @@ describeIf("suggest-categories (live integration)", () => {
         }
       }
     },
-    30_000,
+    60_000,
   );
 
   it(
